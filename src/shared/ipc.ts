@@ -23,7 +23,10 @@ export const IpcChannels = {
   fileDecline: 'file:decline',
   fileCancel: 'file:cancel',
   fileReveal: 'file:reveal',
-  transferGet: 'transfer:get'
+  transferGet: 'transfer:get',
+  imgSendBytes: 'img:send-bytes',
+  imgOfferPath: 'img:offer-path',
+  imgSaveAs: 'img:save-as'
 } as const
 
 /** main → renderer 的事件推送 */
@@ -94,7 +97,7 @@ export interface MessageView {
   convId: string
   senderId: string
   isMine: boolean
-  kind: 'text' | 'file'
+  kind: 'text' | 'file' | 'image'
   text: string
   fileRef?: FileRefView
   ts: number
@@ -176,6 +179,12 @@ export interface PantryApi {
   /** 完成后在文件管理器中显示 */
   revealTransfer(transferId: string): Promise<void>
   getTransfer(transferId: string): Promise<TransferView | null>
+  /** 粘贴的图片字节 → 落本机图片缓存 → 以 purpose:image 发起传输 */
+  sendImageBytes(peerNodeId: string, name: string, bytes: ArrayBuffer): Promise<MessageView | null>
+  /** 磁盘上的图片文件按图片消息发送（拖拽/选择器入口） */
+  offerImagePath(peerNodeId: string, path: string): Promise<MessageView | null>
+  /** 大图查看器"另存为" */
+  saveImageAs(transferId: string): Promise<boolean>
   /** 订阅通讯录变化；返回退订函数 */
   onPeersUpdated(listener: (peers: PeerView[]) => void): () => void
   onMsgNew(listener: (msg: MessageView) => void): () => void

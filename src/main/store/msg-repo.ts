@@ -20,7 +20,7 @@ export interface NewMessage {
   convId: string
   senderId: string
   isMine: boolean
-  kind: 'text' | 'file'
+  kind: 'text' | 'file' | 'image'
   content: string
   /** 文件消息：FileRefView 的 JSON */
   fileRef?: string
@@ -43,7 +43,7 @@ export function msgRowToView(row: MsgRow): MessageView {
     convId: row.conv_id,
     senderId: row.sender_id,
     isMine: row.is_mine !== 0,
-    kind: row.kind === 'file' ? 'file' : 'text',
+    kind: row.kind === 'file' ? 'file' : row.kind === 'image' ? 'image' : 'text',
     text: row.content,
     fileRef,
     ts: row.ts,

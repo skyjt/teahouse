@@ -85,7 +85,28 @@ export const useChatStore = defineStore('chat', {
       const conv = this.activeConv
       if (!conv) return false
       const view = await window.pantry.offerFiles(conv.peerId, paths)
-      if (!view) return false
+      return this.pushOwn(view)
+    },
+
+    /** 磁盘图片按图片消息发送（拖拽图片/选择器） */
+    async sendImagePath(path: string): Promise<boolean> {
+      const conv = this.activeConv
+      if (!conv) return false
+      const view = await window.pantry.offerImagePath(conv.peerId, path)
+      return this.pushOwn(view)
+    },
+
+    /** 粘贴的图片字节（截图 Ctrl+V） */
+    async sendImageBytes(name: string, bytes: ArrayBuffer): Promise<boolean> {
+      const conv = this.activeConv
+      if (!conv) return false
+      const view = await window.pantry.sendImageBytes(conv.peerId, name, bytes)
+      return this.pushOwn(view)
+    },
+
+    pushOwn(view: MessageView | null): boolean {
+      const conv = this.activeConv
+      if (!view || !conv) return false
       const list = (this.messages[conv.id] ??= [])
       if (!list.some((m) => m.id === view.id)) list.push(view)
       return true

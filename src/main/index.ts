@@ -1,6 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type Tray } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell, type Tray } from 'electron'
 import { release } from 'node:os'
-import { join, resolve } from 'node:path'
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { basename, extname, join, resolve } from 'node:path'
 import {
   IpcChannels,
   IpcEvents,
@@ -160,7 +162,8 @@ if (!gotLock) {
         transferRepo: new TransferRepo(db),
         tcpPort,
         getSaveDir: () =>
-          appState?.config.fileDir || join(app.getPath('downloads'), '茶话间')
+          appState?.config.fileDir || join(app.getPath('downloads'), '茶话间'),
+        getImagesDir: () => join(app.getPath('userData'), 'data', 'images')
       })
       files.on('message', onMessage)
       files.on('status', onStatus)
@@ -414,6 +417,49 @@ if (!gotLock) {
     return files?.transferView(transferId) ?? null
   })
 
+  const IMG_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'])
+
+  ipcMain.handle(
+    IpcChannels.imgSendBytes,
+    async (_event, peerId: unknown, name: unknown, bytes: unknown) => {
+      if (typeof peerId !== 'string' || peerId.length === 0 || peerId.length > 64) return null
+      if (typeof name !== 'string' || name.length === 0 || name.length > 128) return null
+      if (!(bytes instanceof ArrayBuffer) || bytes.byteLength === 0) return null
+      if (bytes.byteLength > 20 * 1024 * 1024) return null
+      const ext = IMG_EXTS.has(extname(name).toLowerCase()) ? extname(name).toLowerCase() : '.png'
+      const dir = join(app.getPath('userData'), 'data', 'images', 'out')
+      mkdirSync(dir, { recursive: true })
+      const path = join(dir, `${randomUUID()}${ext}`)
+      writeFileSync(path, Buffer.from(bytes))
+      return (await files?.offerPaths(peerId, [path], true)) ?? null
+    }
+  )
+
+  ipcMain.handle(IpcChannels.imgOfferPath, async (_event, peerId: unknown, path: unknown) => {
+    if (typeof peerId !== 'string' || peerId.length === 0 || peerId.length > 64) return null
+    if (typeof path !== 'string' || path.length === 0 || path.length > 2048) return null
+    if (!IMG_EXTS.has(extname(path).toLowerCase())) return null
+    return (await files?.offerPaths(peerId, [path], true)) ?? null
+  })
+
+  ipcMain.handle(IpcChannels.imgSaveAs, async (_event, transferId: unknown): Promise<boolean> => {
+    if (typeof transferId !== 'string' || transferId.length > 64 || !mainWindow) return false
+    const view = files?.transferView(transferId)
+    if (!view?.savedPath) return false
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: '图片另存为',
+      defaultPath: basename(view.savedPath)
+    })
+    if (result.canceled || !result.filePath) return false
+    try {
+      copyFileSync(view.savedPath, result.filePath)
+      return true
+    } catch (err) {
+      console.warn('[files] 图片另存失败：', err)
+      return false
+    }
+  })
+
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
@@ -423,6 +469,23 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     appState = loadAppState(app.getPath('userData'), app.getVersion(), tcpPort)
+
+    // pantry-img://<transferId> —— 渲染层取图的唯一通道（绕开 file:// 的 CSP/安全限制，
+    // 且只放行 transfers 表里登记过的路径，不开任意文件读取口子）
+    protocol.registerFileProtocol('pantry-img', (request, callback) => {
+      try {
+        const transferId = new URL(request.url).hostname
+        const view = files?.transferView(transferId)
+        if (view?.savedPath) {
+          callback({ path: view.savedPath })
+          return
+        }
+      } catch {
+        // fallthrough
+      }
+      callback({ error: -6 }) // net::ERR_FILE_NOT_FOUND
+    })
+
     createMainWindow()
     tray = setupTray({
       showWindow: showMainWindow,

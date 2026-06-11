@@ -55,6 +55,12 @@ const api: PantryApi = {
     ipcRenderer.invoke(IpcChannels.fileReveal, transferId),
   getTransfer: (transferId: string): Promise<TransferView | null> =>
     ipcRenderer.invoke(IpcChannels.transferGet, transferId),
+  sendImageBytes: (peerNodeId: string, name: string, bytes: ArrayBuffer): Promise<MessageView | null> =>
+    ipcRenderer.invoke(IpcChannels.imgSendBytes, peerNodeId, name, bytes),
+  offerImagePath: (peerNodeId: string, path: string): Promise<MessageView | null> =>
+    ipcRenderer.invoke(IpcChannels.imgOfferPath, peerNodeId, path),
+  saveImageAs: (transferId: string): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.imgSaveAs, transferId),
   onPeersUpdated: (listener) => subscribe<PeerView[]>(IpcEvents.peersUpdated, listener),
   onMsgNew: (listener) => subscribe<MessageView>(IpcEvents.msgNew, listener),
   onMsgStatus: (listener) => subscribe<MsgStatusEvent>(IpcEvents.msgStatus, listener),

@@ -5,6 +5,7 @@ import { useChatStore } from '../stores/chat'
 import { useTransfersStore } from '../stores/transfers'
 import { separatorTime } from '../utils/time'
 import FileCard from './FileCard.vue'
+import ImageBubble from './ImageBubble.vue'
 import type { MessageView } from '../../../shared/ipc'
 
 const peersStore = usePeersStore()
@@ -72,10 +73,41 @@ function statusHint(msg: MessageView): string {
   return ''
 }
 
+const IMG_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
+function isImagePath(path: string): boolean {
+  const lower = path.toLowerCase()
+  return IMG_EXTS.some((ext) => lower.endsWith(ext))
+}
+
 async function sendFiles(directory: boolean): Promise<void> {
   if (!peerOnline.value) return
   const paths = await window.pantry.pickFiles(directory)
   if (paths) await chatStore.sendFilePaths(paths)
+}
+
+async function sendImage(): Promise<void> {
+  if (!peerOnline.value) return
+  const paths = await window.pantry.pickFiles(false)
+  if (!paths) return
+  for (const p of paths) {
+    if (isImagePath(p)) await chatStore.sendImagePath(p)
+    else await chatStore.sendFilePaths([p])
+  }
+}
+
+/** 截图 Ctrl+V：剪贴板里的图片直接发送（F-MSG-3） */
+async function onPaste(event: ClipboardEvent): Promise<void> {
+  if (!peerOnline.value || !event.clipboardData) return
+  for (const item of Array.from(event.clipboardData.items)) {
+    if (!item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (!file) continue
+    event.preventDefault()
+    const bytes = await file.arrayBuffer()
+    const ext = item.type === 'image/jpeg' ? '.jpg' : '.png'
+    await chatStore.sendImageBytes(`粘贴图片${ext}`, bytes)
+    return
+  }
 }
 
 function onDragOver(event: DragEvent): void {
@@ -92,7 +124,13 @@ async function onDrop(event: DragEvent): Promise<void> {
     const p = (file as File & { path?: string }).path
     if (p) paths.push(p)
   }
-  if (paths.length > 0) await chatStore.sendFilePaths(paths)
+  if (paths.length === 0) return
+  // 单张图片拖入 → 按图片消息发；其余按文件
+  if (paths.length === 1 && isImagePath(paths[0])) {
+    await chatStore.sendImagePath(paths[0])
+  } else {
+    await chatStore.sendFilePaths(paths)
+  }
 }
 </script>
 
@@ -109,6 +147,7 @@ async function onDrop(event: DragEvent): Promise<void> {
         <div v-if="needSeparator(msg, i)" class="sep">{{ separatorTime(msg.ts) }}</div>
         <div class="row" :class="msg.isMine ? 'mine' : 'peer'">
           <FileCard v-if="msg.kind === 'file'" :msg="msg" />
+          <ImageBubble v-else-if="msg.kind === 'image'" :msg="msg" />
           <div v-else class="bubble">
             <span class="text">{{ msg.text }}</span>
           </div>
@@ -135,19 +174,21 @@ async function onDrop(event: DragEvent): Promise<void> {
 
     <footer class="input-area">
       <div class="toolbar">
+        <button class="tool" title="发送图片" :disabled="!peerOnline" @click="sendImage">🖼</button>
         <button class="tool" title="发送文件" :disabled="!peerOnline" @click="sendFiles(false)">
           📁
         </button>
         <button class="tool" title="发送文件夹" :disabled="!peerOnline" @click="sendFiles(true)">
           🗂
         </button>
-        <span v-if="!peerOnline" class="tool-hint">对方离线，无法发送文件</span>
+        <span v-if="!peerOnline" class="tool-hint">对方离线，无法发送图片/文件</span>
       </div>
       <textarea
         v-model="draft"
         class="input"
-        placeholder="输入消息，Enter 发送，Ctrl+Enter 换行"
+        placeholder="输入消息，Enter 发送，Ctrl+Enter 换行；粘贴截图直接发送"
         @keydown="onKeydown"
+        @paste="onPaste"
       ></textarea>
       <div class="input-bar">
         <span v-if="draftBytes > 600" class="counter" :class="{ over: overLimit }">

@@ -110,6 +110,7 @@ function validatePayload(type: string, payload: unknown): boolean {
       if (!isInt(o.fileCount) || o.fileCount! < 1 || o.fileCount! > MAX_FILES_PER_TRANSFER)
         return false
       if (!isStr(o.rootName, 255)) return false
+      if (o.purpose !== undefined && o.purpose !== 'image') return false
       if (!Array.isArray(o.files) || o.files.length === 0 || o.files.length > OFFER_FILES_PER_PACKET)
         return false
       return o.files.every(

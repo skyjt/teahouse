@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events'
 import { readdirSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import {
+  IMG_AUTO_ACCEPT,
   MAX_FILES_PER_TRANSFER,
   MSG_TYPES,
   OFFER_ASSEMBLE_TIMEOUT,
@@ -49,6 +50,7 @@ interface AssemblingOffer {
   totalSize: number
   fileCount: number
   rootName: string
+  purpose?: 'image'
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -74,6 +76,8 @@ export interface FilesDeps {
   transferRepo: TransferRepo
   tcpPort: number
   getSaveDir: () => string
+  /** 图片缓存目录（免确认接收的落点） */
+  getImagesDir: () => string
   bindAddress?: string
 }
 
@@ -129,7 +133,11 @@ export class FilesService extends EventEmitter {
   // ---------- 发送侧 ----------
 
   /** 发起传输；对方离线返回 null（决议 #4：提示不在线，不入队） */
-  async offerPaths(peerId: string, paths: string[]): Promise<MessageView | null> {
+  async offerPaths(
+    peerId: string,
+    paths: string[],
+    wantImage = false
+  ): Promise<MessageView | null> {
     const peer = this.deps.registry.get(peerId)
     if (!peer || !peer.online || paths.length === 0) return null
 
@@ -157,6 +165,9 @@ export class FilesService extends EventEmitter {
     if (fileCount === 0 || fileCount > MAX_FILES_PER_TRANSFER) return null
     for (const m of metas) totalSize += m.size
 
+    // 图片用途：单文件且 ≤20MB 才成立，否则退化为普通文件（决议 #2）
+    const asImage = wantImage && !hasDir && fileCount === 1 && totalSize <= IMG_AUTO_ACCEPT
+
     const transferId = randomUUID()
     const rootName =
       paths.length === 1 ? basename(paths[0]) : `${basename(paths[0])} 等 ${fileCount} 个文件`
@@ -175,8 +186,8 @@ export class FilesService extends EventEmitter {
       convId,
       senderId: this.deps.selfId,
       isMine: true,
-      kind: 'file',
-      content: `[文件] ${rootName}`,
+      kind: asImage ? 'image' : 'file',
+      content: asImage ? '[图片]' : `[文件] ${rootName}`,
       fileRef: JSON.stringify(fileRef),
       ts: now,
       status: 'sending'
@@ -187,7 +198,11 @@ export class FilesService extends EventEmitter {
       msgId,
       peerId,
       direction: 'out',
-      files: JSON.stringify({ name: rootName } satisfies FilesBlob),
+      // 发送侧图片 savedPath=源文件：自己的气泡立即可渲染
+      files: JSON.stringify({
+        name: rootName,
+        ...(asImage ? { savedPath: paths[0] } : {})
+      } satisfies FilesBlob),
       status: 'offering',
       total: totalSize,
       ts: now
@@ -216,7 +231,8 @@ export class FilesService extends EventEmitter {
           files: slice,
           totalSize,
           fileCount,
-          rootName
+          rootName,
+          ...(asImage ? { purpose: 'image' as const } : {})
         }
         const ok = await this.deps.messenger.sendReliable(
           peerId,
@@ -413,6 +429,7 @@ export class FilesService extends EventEmitter {
         totalSize: offer.totalSize,
         fileCount: offer.fileCount,
         rootName: offer.rootName,
+        purpose: offer.purpose,
         timer: setTimeout(() => this.assembling.delete(offer.transferId), OFFER_ASSEMBLE_TIMEOUT)
       }
       this.assembling.set(offer.transferId, asm)
@@ -438,6 +455,15 @@ export class FilesService extends EventEmitter {
     }
     if (plans.filter((p) => !p.isDir).length !== asm.fileCount) return // 分包不一致，丢弃
 
+    // 图片免确认条件复核（不信任发送方标记，大小/单文件条件自己验——决议 #2）
+    const asImage =
+      asm.purpose === 'image' &&
+      asm.fileCount === 1 &&
+      asm.totalSize <= IMG_AUTO_ACCEPT &&
+      plans.length === 1 &&
+      !plans[0].isDir &&
+      !plans[0].relPath.includes('/')
+
     const convId = this.deps.convRepo.ensureSingle(peerId)
     const msgId = randomUUID()
     const fileRef: FileRefView = {
@@ -453,8 +479,8 @@ export class FilesService extends EventEmitter {
       convId,
       senderId: peerId,
       isMine: false,
-      kind: 'file',
-      content: `[文件] ${asm.rootName}`,
+      kind: asImage ? 'image' : 'file',
+      content: asImage ? '[图片]' : `[文件] ${asm.rootName}`,
       fileRef: JSON.stringify(fileRef),
       ts: now,
       status: 'sent'
@@ -482,6 +508,9 @@ export class FilesService extends EventEmitter {
     if (msgRow) this.emit('message', msgRowToView(msgRow))
     this.emitConvs()
     this.emitTransfer(offer.transferId, true)
+
+    // 图片：免确认，立即拉进图片缓存（protocol §7.1）
+    if (asImage) void this.accept(offer.transferId, this.deps.getImagesDir())
   }
 
   private async declineUnknown(peerId: string, transferId: string): Promise<void> {
