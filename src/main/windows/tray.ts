@@ -13,6 +13,7 @@ export interface TrayDeps {
 export function setupTray(deps: TrayDeps): Tray | null {
   try {
     const icon = nativeImage.createFromDataURL(TRAY_ICON_DATAURL)
+    if (process.platform === 'darwin') icon.setTemplateImage(true)
     const tray = new Tray(icon)
     tray.setToolTip('茶话间')
     tray.setContextMenu(

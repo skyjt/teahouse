@@ -12,6 +12,7 @@ import ProfileCard from './components/ProfileCard.vue'
 import GroupCreator from './components/GroupCreator.vue'
 import MassSender from './components/MassSender.vue'
 import PantryIcon from './components/PantryIcon.vue'
+import PantryBrandLogo from './components/PantryBrandLogo.vue'
 import { useGroupsStore } from './stores/groups'
 import type { PeerView } from '../../shared/ipc'
 import { applyAppearance } from './utils/appearance'
@@ -146,7 +147,8 @@ onUnmounted(() => {
       />
       <ChatPane v-else-if="chatStore.activeConv" />
       <div v-else class="empty">
-        <div class="logo">茶话间</div>
+        <PantryBrandLogo variant="icon" :size="92" class="empty-logo" />
+        <div class="brand-title">茶话间</div>
         <p v-if="info" class="meta">
           v{{ info.version }} · Electron {{ info.electron }} · Chromium {{ info.chrome }} · Node
           {{ info.node }}
@@ -306,7 +308,10 @@ onUnmounted(() => {
   text-align: center;
   color: var(--text-3);
 }
-.logo {
+.empty-logo {
+  margin: 0 auto 14px;
+}
+.brand-title {
   font-size: 28px;
   font-weight: 600;
   color: var(--primary);
