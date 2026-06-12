@@ -15,7 +15,7 @@ import PantryIcon from './components/PantryIcon.vue'
 import { useGroupsStore } from './stores/groups'
 import type { PeerView } from '../../shared/ipc'
 import { applyAppearance } from './utils/appearance'
-import { avatarText } from './utils/avatar'
+import { avatarStyle, avatarText } from './utils/avatar'
 
 type Tab = 'chat' | 'contacts'
 
@@ -80,7 +80,12 @@ onUnmounted(() => {
   <SetupWizard v-if="showWizard && settings" :settings="settings" @done="showWizard = false" />
   <div class="shell">
     <nav class="rail">
-      <div class="avatar">{{ avatarText(settings?.avatar ?? -1, settings?.nick ?? '茶') }}</div>
+      <div
+        class="avatar"
+        :style="avatarStyle(settings?.avatar ?? -1, settings?.nick ?? '茶')"
+      >
+        {{ avatarText(settings?.avatar ?? -1, settings?.nick ?? '茶') }}
+      </div>
       <button
         class="rail-btn"
         :class="{ active: tab === 'chat' }"
@@ -173,11 +178,10 @@ onUnmounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 50%; /* 决议：圆形头像 */
-  background: var(--bg-window);
-  color: var(--primary);
   display: grid;
   place-items: center;
   font-weight: 600;
+  font-size: 18px;
   margin-bottom: 8px;
 }
 .rail-btn {

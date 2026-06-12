@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { PeerView } from '../../../shared/ipc'
-import { avatarText } from '../utils/avatar'
+import { avatarStyle, avatarText } from '../utils/avatar'
 
 // 联系人资料卡（ui-design §4）：信息 + 本地备注（F-DISC-9）+ 发消息入口
 
@@ -28,15 +28,21 @@ async function saveRemark(): Promise<void> {
 function orgPath(p: PeerView): string {
   return [p.company, p.dept, p.team].filter(Boolean).join(' / ') || '未分组'
 }
+
+function profileAvatarStyle(peer: PeerView): { backgroundColor: string; color: string } {
+  return peer.online
+    ? avatarStyle(peer.avatar, peer.remark || peer.nick)
+    : { backgroundColor: 'var(--offline)', color: '#fff' }
+}
 </script>
 
 <template>
   <div class="card-wrap">
     <div class="card">
       <div class="head">
-        <span class="avatar" :class="{ off: !peer.online }">{{
-          avatarText(peer.avatar, peer.remark || peer.nick)
-        }}</span>
+        <span class="avatar" :class="{ off: !peer.online }" :style="profileAvatarStyle(peer)">
+          {{ avatarText(peer.avatar, peer.remark || peer.nick) }}
+        </span>
         <div class="who">
           <div class="name">
             {{ peer.remark || peer.nick }}

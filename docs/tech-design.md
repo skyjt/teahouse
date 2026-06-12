@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| 状态 | v0.6，P1 本地交付候选；目标平台真实打包测试待 Windows / Debian 执行 |
-| 日期 | 2026-06-10 |
+| 状态 | v0.7，P1 本地交付候选；目标平台真实打包测试待 Windows / Debian 执行 |
+| 日期 | 2026-06-12 |
 | 关系 | 上游：[requirements.md](requirements.md)（功能）、[protocol.md](protocol.md)（协议）、[ui-design.md](ui-design.md)（界面）；硬约束：根 README「开发红线」（Electron 22.3.27 / Chrome 108 / Node 16.17 焊死） |
 
 ## 1. 选型决策总表
@@ -14,7 +14,7 @@
 | 构建 | **electron-vite**（Vite 5） | 一份配置管三端产物；renderer 目标 `chrome108`、main/preload 目标 `node16`，红线在构建层强制 |
 | 渲染框架 | **Vue 3 + Pinia** | 组件模型贴合三栏布局；生态对中文社区友好；Chrome 108 完全兼容 |
 | 样式 | **原生 CSS + CSS 变量**（ui-design §9 token 直接映射），Vue SFC scoped；不引组件库/Tailwind | 视觉自绘才能做出"微信感"；避免组件库默认样式拉低质感 |
-| 图标 | **项目内自绘线性 SVG** | 线性 1.6px 风格与 UI 文档一致；不依赖 emoji/system 字形，不引入组件库或图标依赖 |
+| 图标 | **项目内自绘线性 SVG** | 线性 1.6px 风格与 UI 文档一致；不依赖 emoji/system 字形，不引入组件库或图标依赖；设置入口必须是明确齿轮造型 |
 | 数据库 | **better-sqlite3 锁定 9.6.0**（同步 API + WAL + FTS5） | 主进程单线程同步访问最简单可靠；已对 Electron 22 ABI=110 实测编译+运行通过。`.npmrc` 以 `runtime=electron` 让 native 构建始终面向 Electron 而非开发机 Node（开发机 Node 太新会编不过老版本源码） |
 | 图片处理 | **渲染进程 canvas**（缩略图、表情包压缩 WebP） | Chromium 108 原生支持 `toBlob('image/webp')`；**不引 sharp** 等 native 库，避开老 glibc 等编译雷区 |
 | 日志 | 自写轻量 logger（分级、按天分文件、保留 7 天、可打包导出） | 几十行的事，不引依赖 |
@@ -238,3 +238,4 @@ media/stickers/...  # 自定义表情包媒体
 - 2026-06-11 v0.8 首个可交付预览版打包链条：精确锁 `electron-builder@24.13.3`，新增 `dist:win` / `dist:linux` / `dist:mac`，配置 `electronVersion: 22.3.27` 与 better-sqlite3 asarUnpack；Windows/Debian 真实打包测试放到目标平台执行。
 - 2026-06-11 v0.9 P1 本地交付候选：`services/porter.ts` 落地迁移备份包（消息/联系人/群/传输/表情/媒体）、`shared/ipc.ts` 补转发/会话操作/导出范围/端口设置契约；`TransferServer` 支持 TCP 长文本控制帧；数据库自测覆盖 porter 媒体恢复。
 - 2026-06-11 v0.10 图标与群管理权限：图标方案改为项目内自绘 SVG；groups 表迁移 v7 增加 `creator_ip/admin_secret_hash`，服务层按创建 IP 或管理密码摘要限制改名/增删成员，退组保持免管理权限。
+- 2026-06-12 v0.11 头像模板与设置图标修正：头像编号保持 number，前端按“20 个 emoji 图标 + 背景色下标”组合解释；设置入口 SVG 重画为明确齿轮。

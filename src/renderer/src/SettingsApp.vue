@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type {
   AppInfo,
   AppSettingsPatch,
@@ -10,7 +10,15 @@ import type {
 } from '../../shared/ipc'
 import { DEFAULT_TCP_PORT, DEFAULT_UDP_PORT } from '../../shared/protocol'
 import { applyAppearance } from './utils/appearance'
-import { BUILTIN_AVATARS, avatarText } from './utils/avatar'
+import {
+  AVATAR_COLORS,
+  AVATAR_EMOJIS,
+  avatarColorIndex,
+  avatarEmojiIndex,
+  avatarStyle,
+  avatarText,
+  avatarValue
+} from './utils/avatar'
 import PantryIcon from './components/PantryIcon.vue'
 
 // 设置独立小窗（ui-design §8）：P1 起按 8 组完整承载本地设置。
@@ -64,6 +72,9 @@ const tcpPortInput = ref('')
 const captureShortcut = ref('')
 const showHideShortcut = ref('')
 let stopSettings: (() => void) | null = null
+const selectedAvatarEmoji = computed(() => avatarEmojiIndex(avatar.value))
+const selectedAvatarColor = computed(() => avatarColorIndex(avatar.value, nick.value || '茶'))
+const avatarPreviewStyle = computed(() => avatarStyle(avatar.value, nick.value || '茶'))
 
 onMounted(async () => {
   info.value = await window.pantry.getAppInfo()
@@ -122,6 +133,23 @@ async function saveProfile(): Promise<void> {
   })
   if (settings.value) syncForm(settings.value)
   flashSaved('已保存，全网通讯录将自动刷新')
+}
+
+function chooseInitialAvatar(): void {
+  avatar.value = -1
+}
+
+function chooseAvatarEmoji(index: number): void {
+  avatar.value = avatarValue(index, selectedAvatarColor.value)
+}
+
+function chooseAvatarColor(index: number): void {
+  const emoji = selectedAvatarEmoji.value >= 0 ? selectedAvatarEmoji.value : 0
+  avatar.value = avatarValue(emoji, index)
+}
+
+function avatarOptionStyle(index: number): { backgroundColor: string; color: string } {
+  return avatarStyle(avatarValue(index, selectedAvatarColor.value), nick.value || '茶')
 }
 
 async function pickFileDir(): Promise<void> {
@@ -349,24 +377,48 @@ async function removeRange(cidr: string): Promise<void> {
         <h2>我的资料</h2>
         <div class="row avatar-row">
           <span>头像</span>
-          <div class="avatar-grid">
-            <button
-              class="avatar-choice"
-              :class="{ on: avatar === -1 }"
-              title="昵称首字"
-              @click="avatar = -1"
-            >
-              {{ avatarText(-1, nick || '茶') }}
-            </button>
-            <button
-              v-for="(label, idx) in BUILTIN_AVATARS"
-              :key="label"
-              class="avatar-choice"
-              :class="{ on: avatar === idx }"
-              @click="avatar = idx"
-            >
-              {{ label }}
-            </button>
+          <div class="avatar-editor">
+            <div class="avatar-preview" :style="avatarPreviewStyle">
+              {{ avatarText(avatar, nick || '茶') }}
+            </div>
+            <div class="avatar-tools">
+              <button
+                type="button"
+                class="avatar-initial"
+                :class="{ on: avatar === -1 }"
+                aria-label="使用昵称首字头像"
+                @click="chooseInitialAvatar"
+              >
+                昵称首字
+              </button>
+              <div class="avatar-grid" aria-label="精选头像图标">
+                <button
+                  v-for="(label, idx) in AVATAR_EMOJIS"
+                  :key="label"
+                  type="button"
+                  class="avatar-choice"
+                  :class="{ on: selectedAvatarEmoji === idx }"
+                  :style="avatarOptionStyle(idx)"
+                  :aria-label="`头像图标 ${idx + 1}`"
+                  @click="chooseAvatarEmoji(idx)"
+                >
+                  {{ label }}
+                </button>
+              </div>
+              <div class="avatar-colors" aria-label="头像背景色">
+                <button
+                  v-for="(color, idx) in AVATAR_COLORS"
+                  :key="color.name"
+                  type="button"
+                  class="color-choice"
+                  :class="{ on: selectedAvatarColor === idx && avatar >= 0 }"
+                  :style="{ backgroundColor: color.bg }"
+                  :title="color.name"
+                  :aria-label="`头像背景色：${color.name}`"
+                  @click="chooseAvatarColor(idx)"
+                ></button>
+              </div>
+            </div>
           </div>
         </div>
         <label class="row"><span>昵称</span><input v-model="nick" maxlength="32" /></label>
@@ -692,27 +744,81 @@ h3 {
 .avatar-row {
   align-items: flex-start;
 }
-.avatar-grid {
+.avatar-editor {
+  flex: 1;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
+  min-width: 0;
 }
-.avatar-choice {
-  width: 32px;
-  height: 32px;
+.avatar-preview {
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.avatar-tools {
+  flex: 1;
+  min-width: 0;
+}
+.avatar-initial {
   border: 1px solid var(--line);
   background: var(--bg-list);
-  color: var(--text-1);
+  color: var(--text-2);
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.avatar-initial.on {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(61, 139, 107, 0.1);
+}
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 30px);
+  gap: 6px;
+}
+.avatar-choice {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.72);
   cursor: pointer;
   display: grid;
   place-items: center;
-  font-size: 14px;
+  font-size: 15px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 .avatar-choice.on {
   border-color: var(--primary);
-  background: var(--primary);
-  color: #fff;
+  box-shadow:
+    0 0 0 2px rgba(61, 139, 107, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.78);
+}
+.avatar-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.color-choice {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-window);
+  box-shadow: 0 0 0 1px var(--line);
+  cursor: pointer;
+}
+.color-choice.on {
+  box-shadow:
+    0 0 0 2px var(--primary),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 .dir {
   flex: 1;

@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import type { PeerView } from '../../../shared/ipc'
 import { usePeersStore } from '../stores/peers'
-import { avatarText } from '../utils/avatar'
+import { avatarStyle, avatarText } from '../utils/avatar'
 
 // 通讯录三级折叠树（F-DISC-4 / ui-design §4）：公司 ▸ 部门 ▸ 团队 ▸ 成员。
 // 字段空缺逐级跳过，全空归"未分组"；组内在线优先（registry 已排序）。
@@ -101,6 +101,12 @@ function toggle(key: string): void {
 function displayName(peer: PeerView): string {
   return peer.remark || peer.nick
 }
+
+function peerAvatarStyle(peer: PeerView): { backgroundColor: string; color: string } {
+  return peer.online
+    ? avatarStyle(peer.avatar, displayName(peer))
+    : { backgroundColor: 'var(--offline)', color: '#fff' }
+}
 </script>
 
 <template>
@@ -123,9 +129,13 @@ function displayName(peer: PeerView): string {
           <span class="g-count">({{ row.online }}/{{ row.total }})</span>
         </template>
         <template v-else>
-          <span class="peer-avatar" :class="{ off: !row.peer!.online }">{{
-            avatarText(row.peer!.avatar, displayName(row.peer!))
-          }}</span>
+          <span
+            class="peer-avatar"
+            :class="{ off: !row.peer!.online }"
+            :style="peerAvatarStyle(row.peer!)"
+          >
+            {{ avatarText(row.peer!.avatar, displayName(row.peer!)) }}
+          </span>
           <span class="peer-main">
             <span class="peer-name" :class="{ dim: !row.peer!.online }">
               {{ displayName(row.peer!) }}

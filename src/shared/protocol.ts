@@ -77,7 +77,7 @@ export interface Profile {
   company: string
   dept: string
   team: string
-  /** 内置头像编号；-1 = 昵称色块 */
+  /** 头像模板编号；-1 = 昵称色块，>=0 = 背景色下标 * 20 + emoji 下标 */
   avatar: number
   /** 资料版本号，每次修改 +1；presence 携带，用于失配刷新 */
   profileRev: number
