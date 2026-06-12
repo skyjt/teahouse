@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MSG_TYPES, type Envelope, type MsgPayload, type Profile, type Timings } from '../../shared/protocol'
 import { makeEnvelope } from './codec'
 import { UdpChannel } from './udp'
@@ -47,6 +47,21 @@ class MemDedup implements DedupStore {
   prune(ttlMs: number): void {
     const cutoff = Date.now() - ttlMs
     for (const [id, ts] of this.seen) if (ts < cutoff) this.seen.delete(id)
+  }
+}
+
+class ClosedQueue implements QueueStore {
+  enqueue(): void {
+    throw new Error('The database connection is not open')
+  }
+  listByPeer(): Array<{ msgId: string; envelopeJson: string }> {
+    throw new Error('The database connection is not open')
+  }
+  remove(): void {
+    throw new Error('The database connection is not open')
+  }
+  prune(): Array<{ msgId: string; peerId: string }> {
+    throw new Error('The database connection is not open')
   }
 }
 
@@ -292,5 +307,26 @@ describe('messenger 回环集成', () => {
 
     await expect(sending).resolves.toBe('queued')
     expect(a.queue.items).toHaveLength(0)
+  })
+
+  it('退出期数据库已关闭时忽略晚到的补发触发', async () => {
+    nextPort += 2
+    const udp = new UdpChannel({ port: nextPort, bindAddress: '127.0.0.1', broadcastTargets: [] })
+    const registry = new PeerRegistry('node-alice')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    new Messenger({
+      udp,
+      registry,
+      selfId: 'node-alice',
+      queue: new ClosedQueue(),
+      dedup: new MemDedup(),
+      timings: FAST
+    })
+
+    registry.touch('node-bob', '127.0.0.1', nextPort + 1, makeProfile('bob', nextPort + 1))
+    await sleep(0)
+
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

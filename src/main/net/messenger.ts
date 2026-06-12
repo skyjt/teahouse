@@ -71,7 +71,7 @@ export class Messenger extends EventEmitter {
     })
     // 对端上线（发现层判定）→ 补发发车
     this.registry.on('online', (nodeId: string) => {
-      void this.flushQueue(nodeId)
+      this.flushQueueSafely(nodeId)
     })
   }
 
@@ -237,6 +237,13 @@ export class Messenger extends EventEmitter {
     return `${peerId}|${msgId}`
   }
 
+  private flushQueueSafely(peerId: string): void {
+    this.flushQueue(peerId).catch((err) => {
+      if (isDatabaseClosedError(err)) return
+      console.warn('[messenger] 补发队列刷新失败：', err)
+    })
+  }
+
   private handle(env: Envelope, rinfo: RemoteInfo): void {
     if (env.from === this.selfId) return
 
@@ -261,4 +268,8 @@ export class Messenger extends EventEmitter {
       this.emit('incoming', env, rinfo)
     }
   }
+}
+
+function isDatabaseClosedError(err: unknown): boolean {
+  return err instanceof Error && /database connection is not open/i.test(err.message)
 }

@@ -238,4 +238,4 @@ media/stickers/...  # 自定义表情包媒体
 - 2026-06-11 v0.8 首个可交付预览版打包链条：精确锁 `electron-builder@24.13.3`，新增 `dist:win` / `dist:linux` / `dist:mac`，配置 `electronVersion: 22.3.27` 与 better-sqlite3 asarUnpack；Windows/Debian 真实打包测试放到目标平台执行。
 - 2026-06-11 v0.9 P1 本地交付候选：`services/porter.ts` 落地迁移备份包（消息/联系人/群/传输/表情/媒体）、`shared/ipc.ts` 补转发/会话操作/导出范围/端口设置契约；`TransferServer` 支持 TCP 长文本控制帧；数据库自测覆盖 porter 媒体恢复。
 - 2026-06-11 v0.10 图标与群管理权限：图标方案改为项目内自绘 SVG；groups 表迁移 v7 增加 `creator_ip/admin_secret_hash`，服务层按创建 IP 或管理密码摘要限制改名/增删成员，退组保持免管理权限。
-- 2026-06-12 v0.11 头像模板与设置图标修正：头像编号保持 number，前端按“20 个 emoji 图标 + 背景色下标”组合解释；设置入口 SVG 重画为明确齿轮。
+- 2026-06-12 v0.11 头像模板与设置图标修正：头像编号保持 number，前端按“20 个亲和动物 emoji 图标 + 背景色下标”组合解释；设置入口 SVG 重画为明确齿轮。

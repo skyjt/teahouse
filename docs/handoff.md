@@ -28,7 +28,7 @@
 | P1 文件/数据 | `.part` 断点续传；传输记录；HTML/TXT 阅读导出；`.pantry-bak` 迁移备份包（消息、联系人、群、传输、表情、图片/表情媒体）+ 身份映射导入 |
 | P1 系统/设置 | 开机自启、关闭到托盘/退出、通知预览、系统提示音开关、深色主题、字体缩放、截图/显示隐藏快捷键、UDP/TCP 端口保存（重启生效） |
 | 打包链条 | `electron-builder@24.13.3` 精确锁；`dist:win`/`dist:linux`/`dist:mac` 本地脚本；Windows/Debian 真实打包测试留给目标平台 |
-| UI | 三栏主窗、三级通讯录树（公司▸部门▸团队）、资料卡+本地备注、全局搜索（FTS 按字）、自绘线性 SVG 系统图标、明确齿轮设置入口、20 个 emoji + 背景色头像模板、输入区图标中文延迟提示、消息内容级右键菜单与边缘避让、历史滚动加载、设置独立小窗、首启向导、托盘+通知直达会话 |
+| UI | 三栏主窗、三级通讯录树（公司▸部门▸团队）、资料卡+本地备注、全局搜索（FTS 按字）、自绘线性 SVG 系统图标、明确齿轮设置入口、20 个亲和动物 emoji + 背景色头像模板、输入区图标中文延迟提示、消息内容级右键菜单与边缘避让、历史滚动加载、设置独立小窗、首启向导、托盘+通知直达会话 |
 | 存储 | SQLite WAL，迁移 v7（user_version 机制，**只追加永不改旧迁移**）|
 
 ## 2. 开发工作流（沿用即可）
@@ -67,7 +67,7 @@ renderer/  main.ts 哈希三入口(App/#settings/#capture)；stores(pinia=主进
 
 ## 4. 下一步：P1 交付收尾
 
-1. **本地五连验证**：本轮头像模板/设置图标增量已于 2026-06-12 跑通 `npm test` → `npm run test:db` → `npm run typecheck` → `npm run build` → `PANTRY_UDP_PORT=47878 PANTRY_TCP_PORT=47879 npm run smoke`；后续改动仍需按同链路重跑，任何失败先修复再交付。
+1. **本地五连验证**：本轮头像模板补调与退出补发保护已于 2026-06-12 跑通 `npm test` → `npm run test:db` → `npm run typecheck` → `npm run build` → `PANTRY_UDP_PORT=47878 PANTRY_TCP_PORT=47879 npm run smoke`；后续改动仍需按同链路重跑，任何失败先修复再交付。
 2. **目标平台打包测试**：按用户要求，本地确认基本无误后交给 Windows 7 x64 VM / Debian 10 做真实打包与运行冒烟；macOS 当前架构包可本机验证。流程见 [packaging-test.md](packaging-test.md)。
 3. **v1.0 打磨项**：GitHub Actions（linux 必须 debian:10 容器编译 native）、macOS universal 包专项、Win7 VM 专项（twemoji 图片渲染、软渲染验证、SHA-2 KB 提示文案）、LICENSE 定稿（暂定 MIT，需用户确认）。
 
