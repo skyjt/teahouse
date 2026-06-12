@@ -80,35 +80,37 @@ onUnmounted(() => {
   <SetupWizard v-if="showWizard && settings" :settings="settings" @done="showWizard = false" />
   <div class="shell">
     <nav class="rail">
-      <div
-        class="avatar"
-        :style="avatarStyle(settings?.avatar ?? -1, settings?.nick ?? '茶')"
-      >
-        {{ avatarText(settings?.avatar ?? -1, settings?.nick ?? '茶') }}
+      <div class="rail-panel">
+        <div
+          class="avatar"
+          :style="avatarStyle(settings?.avatar ?? -1, settings?.nick ?? '茶')"
+        >
+          {{ avatarText(settings?.avatar ?? -1, settings?.nick ?? '茶') }}
+        </div>
+        <button
+          class="rail-btn"
+          :class="{ active: tab === 'chat' }"
+          title="聊天"
+          @click="tab = 'chat'"
+        >
+          <PantryIcon name="chat" :size="23" />
+          <span v-if="chatStore.totalUnread > 0" class="rail-badge">{{
+            chatStore.totalUnread > 99 ? '99+' : chatStore.totalUnread
+          }}</span>
+        </button>
+        <button
+          class="rail-btn"
+          :class="{ active: tab === 'contacts' }"
+          title="通讯录"
+          @click="tab = 'contacts'"
+        >
+          <PantryIcon name="contacts" :size="23" />
+        </button>
+        <div class="spacer"></div>
+        <button class="rail-btn" title="设置" @click="openSettings">
+          <PantryIcon name="settings" :size="21" />
+        </button>
       </div>
-      <button
-        class="rail-btn"
-        :class="{ active: tab === 'chat' }"
-        title="聊天"
-        @click="tab = 'chat'"
-      >
-        <PantryIcon name="chat" :size="19" />
-        <span v-if="chatStore.totalUnread > 0" class="rail-badge">{{
-          chatStore.totalUnread > 99 ? '99+' : chatStore.totalUnread
-        }}</span>
-      </button>
-      <button
-        class="rail-btn"
-        :class="{ active: tab === 'contacts' }"
-        title="通讯录"
-        @click="tab = 'contacts'"
-      >
-        <PantryIcon name="contacts" :size="19" />
-      </button>
-      <div class="spacer"></div>
-      <button class="rail-btn" title="设置" @click="openSettings">
-        <PantryIcon name="settings" :size="19" />
-      </button>
     </nav>
 
     <aside class="list">
@@ -166,41 +168,61 @@ onUnmounted(() => {
 
 /* 栏① 导航 */
 .rail {
-  width: 56px;
-  background: var(--primary);
+  width: 64px;
+  background: var(--rail-outer);
+  display: flex;
+  justify-content: center;
+  padding: 12px 6px;
+}
+.rail-panel {
+  width: 52px;
+  height: 100%;
+  border-radius: 28px;
+  background: var(--rail-panel);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12px 0;
-  gap: 8px;
+  padding: 14px 0;
+  gap: 10px;
 }
 .avatar {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%; /* 决议：圆形头像 */
   display: grid;
   place-items: center;
   font-weight: 600;
-  font-size: 18px;
-  margin-bottom: 8px;
+  font-size: 17px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 .rail-btn {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border: none;
-  border-radius: 8px;
+  border-radius: 21px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--rail-icon);
   cursor: pointer;
-  opacity: 0.7;
+  opacity: 1;
   display: grid;
   place-items: center;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
 }
-.rail-btn.active,
 .rail-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-  opacity: 1;
+  background: rgba(61, 139, 107, 0.1);
+  color: var(--primary);
+}
+.rail-btn.active {
+  color: var(--primary);
+}
+.rail-btn:active {
+  transform: scale(0.96);
 }
 .rail-badge {
   position: absolute;

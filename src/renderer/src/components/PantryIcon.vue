@@ -16,12 +16,17 @@ withDefaults(
     viewBox="0 0 24 24"
     aria-hidden="true"
   >
-    <g v-if="name === 'chat'">
-      <path d="M5 6.5h14v8.8H9.4L5 18.2V6.5Z" />
-      <path d="M8.5 10h7" />
-      <path d="M8.5 13h4.8" />
+    <g v-if="name === 'chat'" class="fill-only">
+      <path d="M12 5.4c4.4 0 8 2.8 8 6.2s-3.6 6.2-8 6.2c-.8 0-1.6-.1-2.4-.3l-3 2c-.5.3-1-.1-.9-.6l.7-3.1C4.9 14.7 4 13.2 4 11.6c0-3.4 3.6-6.2 8-6.2Z" />
     </g>
-    <g v-else-if="name === 'contacts' || name === 'users'">
+    <g v-else-if="name === 'contacts'">
+      <circle cx="8.2" cy="8.2" r="2.7" />
+      <path d="M3.5 18.7c.5-3.4 2.2-5.1 4.7-5.1s4.2 1.7 4.7 5.1" />
+      <path d="M15.2 8h4.4" />
+      <path d="M15.2 12h3.7" />
+      <path d="M15.2 16h2.6" />
+    </g>
+    <g v-else-if="name === 'users'">
       <path d="M8.2 11.2a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
       <path d="M3.5 19.1c.6-3.1 2.2-4.7 4.7-4.7s4.1 1.6 4.7 4.7" />
       <path d="M15.6 10.8a2.5 2.5 0 1 0 0-5" />
@@ -128,5 +133,9 @@ withDefaults(
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+.fill-only {
+  fill: currentColor;
+  stroke: none;
 }
 </style>

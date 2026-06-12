@@ -8,6 +8,9 @@
   --bg-window: #ffffff;
   --bg-list: #f7f7f7;
   --bg-chat: #f5f5f5;
+  --rail-outer: #080a09;
+  --rail-panel: #e4e8e6;
+  --rail-icon: #68706b;
   --bubble-peer: #ffffff;
   --bubble-mine: var(--primary-weak);
   --line: #ececec;
@@ -26,6 +29,9 @@ html[data-theme='dark'] {
   --bg-window: #171a18;
   --bg-list: #202421;
   --bg-chat: #111412;
+  --rail-outer: #050706;
+  --rail-panel: #d9dedb;
+  --rail-icon: #5f6862;
   --bubble-peer: #232823;
   --bubble-mine: rgba(91, 191, 145, 0.2);
   --line: #303630;
