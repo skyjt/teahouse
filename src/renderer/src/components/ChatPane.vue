@@ -4,6 +4,7 @@ import { usePeersStore } from '../stores/peers'
 import { useChatStore } from '../stores/chat'
 import { useGroupsStore } from '../stores/groups'
 import { useTransfersStore } from '../stores/transfers'
+import { avatarStyle, avatarText } from '../utils/avatar'
 import { separatorTime } from '../utils/time'
 import FileCard from './FileCard.vue'
 import ImageBubble from './ImageBubble.vue'
@@ -11,7 +12,7 @@ import EmojiPanel from './EmojiPanel.vue'
 import GroupPanel from './GroupPanel.vue'
 import ForwardDialog from './ForwardDialog.vue'
 import PantryIcon from './PantryIcon.vue'
-import type { MessageView, SettingsView } from '../../../shared/ipc'
+import type { MessageView, PeerView, SettingsView } from '../../../shared/ipc'
 import { RECALL_WINDOW_MS, TEXT_TCP_LIMIT, TEXT_UDP_LIMIT } from '../../../shared/protocol'
 
 const peersStore = usePeersStore()
@@ -116,6 +117,24 @@ watch(
 
 function senderName(msg: MessageView): string {
   return peersStore.nameOf(msg.senderId)
+}
+
+function senderPeer(msg: MessageView): PeerView | undefined {
+  return peersStore.byId(msg.senderId)
+}
+
+function showGroupSender(msg: MessageView): boolean {
+  return isGroup.value && !msg.isMine && msg.kind !== 'system' && msg.status !== 'recalled'
+}
+
+function senderAvatarStyle(msg: MessageView): { backgroundColor: string; color: string } {
+  const peer = senderPeer(msg)
+  return avatarStyle(peer?.avatar ?? -1, senderName(msg))
+}
+
+function senderAvatarText(msg: MessageView): string {
+  const peer = senderPeer(msg)
+  return avatarText(peer?.avatar ?? -1, senderName(msg))
 }
 
 const draftBytes = computed(() => new TextEncoder().encode(draft.value.trim()).length)
@@ -449,12 +468,6 @@ async function onDrop(event: DragEvent): Promise<void> {
       <div v-if="loadingEarlier" class="sep">加载更早的消息…</div>
       <template v-for="(msg, i) in chatStore.activeMessages" :key="msg.id">
         <div v-if="needSeparator(msg, i)" class="sep">{{ separatorTime(msg.ts) }}</div>
-        <div
-          v-if="isGroup && !msg.isMine && msg.kind !== 'system' && msg.status !== 'recalled'"
-          class="sender"
-        >
-          {{ senderName(msg) }}
-        </div>
         <div v-if="msg.kind === 'system'" class="system-line">{{ msg.text }}</div>
         <div
           v-else-if="msg.status !== 'recalled'"
@@ -462,35 +475,41 @@ async function onDrop(event: DragEvent): Promise<void> {
           class="row"
           :class="[msg.isMine ? 'mine' : 'peer', { highlight: msg.id === chatStore.highlightId }]"
         >
-          <FileCard
-            v-if="msg.kind === 'file'"
-            :msg="msg"
-            class="message-surface"
-            @contextmenu.prevent.stop="openMessageMenu($event, msg)"
-          />
-          <ImageBubble
-            v-else-if="msg.kind === 'image' || msg.kind === 'sticker'"
-            :msg="msg"
-            class="message-surface"
-            @forward="forwardMsg = msg"
-          />
-          <div
-            v-else
-            class="bubble message-surface"
-            @contextmenu.prevent.stop="openMessageMenu($event, msg)"
-          >
-            <template v-for="(part, partIndex) in textParts(msg.text)" :key="partIndex">
-              <button
-                v-if="part.url"
-                class="text-link"
-                type="button"
-                @click.stop="openTextLink(part.url)"
-              >
-                {{ part.text }}
-              </button>
-              <span v-else>{{ part.text }}</span>
-            </template>
-          </div>
+          <span v-if="showGroupSender(msg)" class="msg-avatar" :style="senderAvatarStyle(msg)">
+            {{ senderAvatarText(msg) }}
+          </span>
+          <span class="message-stack">
+            <span v-if="showGroupSender(msg)" class="sender">{{ senderName(msg) }}</span>
+            <FileCard
+              v-if="msg.kind === 'file'"
+              :msg="msg"
+              class="message-surface"
+              @contextmenu.prevent.stop="openMessageMenu($event, msg)"
+            />
+            <ImageBubble
+              v-else-if="msg.kind === 'image' || msg.kind === 'sticker'"
+              :msg="msg"
+              class="message-surface"
+              @forward="forwardMsg = msg"
+            />
+            <div
+              v-else
+              class="bubble message-surface"
+              @contextmenu.prevent.stop="openMessageMenu($event, msg)"
+            >
+              <template v-for="(part, partIndex) in textParts(msg.text)" :key="partIndex">
+                <button
+                  v-if="part.url"
+                  class="text-link"
+                  type="button"
+                  @click.stop="openTextLink(part.url)"
+                >
+                  {{ part.text }}
+                </button>
+                <span v-else>{{ part.text }}</span>
+              </template>
+            </div>
+          </span>
           <span v-if="msg.isMine" class="status">
             <PantryIcon v-if="msg.status === 'sending'" class="spin" name="loader" :size="13" />
             <PantryIcon v-else-if="msg.status === 'sent'" class="ok" name="check" :size="13" />
@@ -848,7 +867,7 @@ async function onDrop(event: DragEvent): Promise<void> {
 .sender {
   font-size: 11px;
   color: var(--text-3);
-  margin: 4px 0 0 4px;
+  margin-left: 4px;
 }
 .head-spacer {
   flex: 1;
@@ -889,11 +908,33 @@ async function onDrop(event: DragEvent): Promise<void> {
 .row.mine {
   flex-direction: row-reverse;
 }
+.msg-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  flex: 0 0 30px;
+  align-self: flex-start;
+  margin-top: 18px;
+}
+.message-stack {
+  max-width: 64%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.row.mine .message-stack {
+  align-items: flex-end;
+}
 .message-surface {
   flex-shrink: 0;
 }
 .bubble {
-  max-width: 64%;
+  max-width: 100%;
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 14px;
