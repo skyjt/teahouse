@@ -1,7 +1,7 @@
 {
   "name": "pantry",
   "productName": "茶话间",
-  "version": "0.15.4",
+  "version": "0.15.7",
   "description": "茶话间（Pantry）—— 纯内网、基于 IP 的局域网即时通讯与文件传输工具",
   "private": true,
   "main": "./out/main/index.js",

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  findNearestOcrTokenIndex,
-  getOcrSelectionBounds,
-  getOcrTokenRangeIds,
+  getOcrResultText,
   getSelectedOcrText,
   isAutoOcrCandidate,
   type OcrToken
@@ -52,33 +50,16 @@ describe('ocr utils', () => {
     expect(getSelectedOcrText(tokens, new Set(['a', 'n']))).toBe('AN')
   })
 
-  it('拖选 OCR 文字时按起止 token 连续范围选择', () => {
+  it('文本窗优先展示整页 OCR 文本，没有整页文本时回退 token 拼接', () => {
     const tokens = [
-      token('p', 'P', 0, 0, 0),
-      token('a', 'A', 0, 0, 1),
-      token('n', 'N', 0, 0, 2),
-      token('t', 'T', 0, 0, 3)
+      token('b', 'OCR', 0, 1, 1),
+      token('d', '话', 1, 1, 3),
+      token('a', 'PANTRY', 0, 0, 0),
+      token('c', '茶', 1, 0, 2)
     ]
 
-    expect(getOcrTokenRangeIds(tokens, 1, 3)).toEqual(['a', 'n', 't'])
-    expect(getOcrTokenRangeIds(tokens, 3, 1)).toEqual(['a', 'n', 't'])
-  })
-
-  it('拖动坐标映射到最近 OCR token，并用 token bbox 计算复制按钮位置', () => {
-    const tokens: OcrToken[] = [
-      { ...token('a', 'A', 0, 0, 0), bbox: { x0: 10, y0: 10, x1: 18, y1: 22 } },
-      { ...token('b', 'B', 0, 0, 1), bbox: { x0: 24, y0: 10, x1: 32, y1: 22 } },
-      { ...token('c', 'C', 1, 0, 2), bbox: { x0: 10, y0: 40, x1: 18, y1: 52 } }
-    ]
-
-    expect(findNearestOcrTokenIndex(tokens, { x: 28, y: 14 })).toBe(1)
-    expect(findNearestOcrTokenIndex(tokens, { x: 14, y: 48 })).toBe(2)
-    expect(getOcrSelectionBounds(tokens, new Set(['a', 'b']))).toEqual({
-      x0: 10,
-      y0: 10,
-      x1: 32,
-      y1: 22
-    })
+    expect(getOcrResultText({ text: '  第一行\n第二行  ', tokens: [], lines: [], scale: 1 })).toBe('第一行\n第二行')
+    expect(getOcrResultText({ text: '', tokens, lines: [], scale: 1 })).toBe('PANTRY OCR\n茶话')
   })
 
   it('小图片自动 OCR，大图片或大字节走手动', () => {

@@ -3,15 +3,11 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   OCR_AUTO_MAX_PIXELS,
-  findNearestOcrTokenIndex,
   getCachedOcrResult,
-  getOcrSelectionBounds,
-  getOcrTokenRangeIds,
-  getSelectedOcrText,
+  getOcrResultText,
   isAutoOcrCandidate,
   recognizeImageText,
-  type OcrResult,
-  type OcrToken
+  type OcrResult
 } from '../utils/ocr'
 import {
   offsetForAnchoredZoom,
@@ -31,14 +27,13 @@ const PAN_STEP = 48
 type Point = ImagePoint
 type DragStart = Point & { offsetX: number; offsetY: number }
 type OcrStatus = 'idle' | 'loading-source' | 'recognizing' | 'ready' | 'error'
-type CopyTip = { x: number; y: number; text: string }
 
 const zoom = ref(1)
 const rotation = ref(0)
 const offset = ref<Point>({ x: 0, y: 0 })
 const natural = ref({ width: 0, height: 0 })
 const imagePlaneEl = ref<HTMLElement | null>(null)
-const ocrLayerEl = ref<HTMLElement | null>(null)
+const ocrTextAreaEl = ref<HTMLTextAreaElement | null>(null)
 const loading = ref(true)
 const broken = ref(false)
 const saving = ref(false)
@@ -47,15 +42,13 @@ const viewMode = ref<'fit' | 'free'>('fit')
 const ocrStatus = ref<OcrStatus>('idle')
 const ocrProgress = ref(0)
 const ocrMessage = ref('')
-const ocrTokens = ref<OcrToken[]>([])
-const selectedOcrIds = ref<Set<string>>(new Set())
-const copyTip = ref<CopyTip | null>(null)
-const isSelectingOcr = ref(false)
+const ocrText = ref('')
+const ocrTextPanelOpen = ref(false)
+const ocrTextCopied = ref(false)
 
 let dragStart: DragStart | null = null
-let ocrSelectionStartTokenIndex: number | null = null
 let ocrAutoStarted = false
-let copyTipTimer: ReturnType<typeof setTimeout> | null = null
+let ocrCopyTimer: ReturnType<typeof setTimeout> | null = null
 let loadToken = 0
 let ocrToken = 0
 
@@ -63,12 +56,7 @@ const canUseImage = computed(() => !loading.value && !broken.value)
 const zoomLabel = computed(() => `${Math.round(zoom.value * 100)}%`)
 const isOcrBusy = computed(() => ocrStatus.value === 'loading-source' || ocrStatus.value === 'recognizing')
 const canStartOcr = computed(() => canUseImage.value && !isOcrBusy.value)
-const canSelectOcr = computed(
-  () => ocrStatus.value === 'ready' && rotation.value === 0 && ocrTokens.value.length > 0
-)
-const selectedOcrText = computed(() => getSelectedOcrText(ocrTokens.value, selectedOcrIds.value))
-const canCopySelectedOcr = computed(() => selectedOcrText.value.length > 0)
-const canCopyAllOcr = computed(() => ocrStatus.value === 'ready' && ocrTokens.value.length > 0)
+const canCopyAllOcr = computed(() => ocrStatus.value === 'ready' && ocrText.value.trim().length > 0)
 const imageOcrCacheKey = computed(() => {
   if (!props.transferId || natural.value.width <= 0 || natural.value.height <= 0) return ''
   return `${props.transferId}:${natural.value.width}x${natural.value.height}`
@@ -78,14 +66,16 @@ const ocrLabel = computed(() => {
   if (ocrStatus.value === 'recognizing') return `识别中 ${Math.round(ocrProgress.value * 100)}%`
   if (ocrStatus.value === 'ready') {
     if (ocrMessage.value) return ocrMessage.value
-    return ocrTokens.value.length > 0 ? '可拖选文字' : '未识别到文字'
+    if (!ocrText.value.trim()) return '未识别到文字'
+    return ocrTextPanelOpen.value ? '结果已打开' : '已识别文字'
   }
   if (ocrStatus.value === 'error') return ocrMessage.value || '识别失败'
   return '识别文字'
 })
 const ocrButtonTitle = computed(() => {
   if (isOcrBusy.value) return ocrLabel.value
-  if (ocrStatus.value === 'ready') return '文字已识别'
+  if (ocrStatus.value === 'ready' && ocrText.value.trim()) return '查看识别结果'
+  if (ocrStatus.value === 'ready') return '重新识别文字'
   if (ocrStatus.value === 'error') return '重试识别文字'
   return '识别文字'
 })
@@ -100,15 +90,6 @@ const imageStyle = computed(() => {
     transform: `translate3d(-50%, -50%, 0) rotate(${rotation.value}deg)`
   }
 })
-const copyTipStyle = computed(() => {
-  const tip = copyTip.value
-  if (!tip) return {}
-  return {
-    left: `${tip.x}px`,
-    top: `${tip.y}px`
-  }
-})
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
@@ -203,7 +184,6 @@ function toggleActualSize(event?: MouseEvent): void {
 
 function rotateImage(delta: number): void {
   rotation.value = (rotation.value + delta + 360) % 360
-  clearOcrSelection()
   if (viewMode.value === 'fit') applyFit()
 }
 
@@ -219,18 +199,21 @@ async function saveAs(): Promise<void> {
 
 async function startOcr(mode: 'auto' | 'manual' = 'manual'): Promise<void> {
   if (!canStartOcr.value) return
+  const openResult = mode === 'manual'
   const token = ++ocrToken
-  clearOcrSelection()
+  clearOcrCopyFeedback()
+  if (openResult) closeOcrTextPanel()
   const cached = await readCachedOcrResult()
   if (token !== ocrToken) return
   if (cached) {
     applyOcrResult(cached)
+    if (openResult) openOcrTextPanel()
     return
   }
   ocrStatus.value = 'loading-source'
   ocrProgress.value = 0
   ocrMessage.value = ''
-  ocrTokens.value = []
+  ocrText.value = ''
   try {
     const source = await window.pantry.getImageOcrSource(props.transferId)
     if (token !== ocrToken) return
@@ -260,6 +243,7 @@ async function startOcr(mode: 'auto' | 'manual' = 'manual'): Promise<void> {
     await saveCachedOcrResult(result)
     if (token !== ocrToken) return
     applyOcrResult(result)
+    if (openResult) openOcrTextPanel()
   } catch (err) {
     console.warn('[image-ocr] 识别失败：', err instanceof Error ? err.message : String(err))
     if (token !== ocrToken) return
@@ -292,15 +276,15 @@ async function saveCachedOcrResult(result: OcrResult): Promise<void> {
   try {
     await window.pantry.saveImageOcrResult(props.transferId, cacheKey, result)
   } catch {
-    // OCR 缓存失败不影响当前窗口选择文字。
+    // OCR 缓存失败不影响当前窗口查看文字。
   }
 }
 
 function applyOcrResult(result: OcrResult): void {
-  ocrTokens.value = result.tokens
+  ocrText.value = getOcrResultText(result)
   ocrStatus.value = 'ready'
   ocrProgress.value = 1
-  ocrMessage.value = result.tokens.length > 0 ? '' : '未识别到文字'
+  ocrMessage.value = ocrText.value.trim() ? '' : '未识别到文字'
 }
 
 function maybeStartAutoOcr(): void {
@@ -318,19 +302,12 @@ function ocrStatusText(status: string): string {
   return '准备识别'
 }
 
-function clearCopyTip(): void {
-  if (copyTipTimer) {
-    clearTimeout(copyTipTimer)
-    copyTipTimer = null
+function clearOcrCopyFeedback(): void {
+  if (ocrCopyTimer) {
+    clearTimeout(ocrCopyTimer)
+    ocrCopyTimer = null
   }
-  copyTip.value = null
-}
-
-function clearOcrSelection(): void {
-  selectedOcrIds.value = new Set()
-  isSelectingOcr.value = false
-  ocrSelectionStartTokenIndex = null
-  clearCopyTip()
+  ocrTextCopied.value = false
 }
 
 function resetOcrState(): void {
@@ -338,100 +315,48 @@ function resetOcrState(): void {
   ocrStatus.value = 'idle'
   ocrProgress.value = 0
   ocrMessage.value = ''
-  ocrTokens.value = []
-  selectedOcrIds.value = new Set()
-  copyTip.value = null
-  isSelectingOcr.value = false
-  ocrSelectionStartTokenIndex = null
+  ocrText.value = ''
+  ocrTextPanelOpen.value = false
   ocrAutoStarted = false
-  if (copyTipTimer) {
-    clearTimeout(copyTipTimer)
-    copyTipTimer = null
-  }
+  clearOcrCopyFeedback()
 }
 
-function pointFromOcrEvent(event: PointerEvent): Point | null {
-  const layer = ocrLayerEl.value
-  if (!layer || zoom.value <= 0) return null
-  const rect = layer.getBoundingClientRect()
-  return {
-    x: clamp((event.clientX - rect.left) / zoom.value, 0, natural.value.width),
-    y: clamp((event.clientY - rect.top) / zoom.value, 0, natural.value.height)
-  }
+function openOcrTextPanel(): void {
+  if (!ocrText.value.trim()) return
+  ocrTextPanelOpen.value = true
+  clearOcrCopyFeedback()
+  window.setTimeout(() => {
+    ocrTextAreaEl.value?.focus()
+  }, 0)
 }
 
-function ocrTokenStyle(token: OcrToken): Record<string, string> {
-  return {
-    left: `${token.bbox.x0 * zoom.value}px`,
-    top: `${token.bbox.y0 * zoom.value}px`,
-    width: `${Math.max(1, (token.bbox.x1 - token.bbox.x0) * zoom.value)}px`,
-    height: `${Math.max(1, (token.bbox.y1 - token.bbox.y0) * zoom.value)}px`
-  }
+function closeOcrTextPanel(): void {
+  ocrTextPanelOpen.value = false
+  clearOcrCopyFeedback()
 }
 
-function onOcrPointerDown(event: PointerEvent, token: OcrToken): void {
-  if (!canSelectOcr.value || event.button !== 0) return
-  const target = event.currentTarget as HTMLElement
-  target.setPointerCapture(event.pointerId)
-  clearOcrSelection()
-  isSelectingOcr.value = true
-  ocrSelectionStartTokenIndex = token.tokenIndex
-  selectedOcrIds.value = new Set([token.id])
-}
-
-function onOcrPointerMove(event: PointerEvent): void {
-  if (!isSelectingOcr.value || ocrSelectionStartTokenIndex === null) return
-  const point = pointFromOcrEvent(event)
-  if (!point) return
-  const endTokenIndex = findNearestOcrTokenIndex(ocrTokens.value, point)
-  if (endTokenIndex === null) return
-  selectedOcrIds.value = new Set(getOcrTokenRangeIds(
-    ocrTokens.value,
-    ocrSelectionStartTokenIndex,
-    endTokenIndex
-  ))
-}
-
-function finishOcrSelection(event: PointerEvent): void {
-  if (!isSelectingOcr.value) return
-  const target = event.currentTarget as HTMLElement
-  if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
-  isSelectingOcr.value = false
-  ocrSelectionStartTokenIndex = null
-  const bounds = getOcrSelectionBounds(ocrTokens.value, selectedOcrIds.value)
-  if (!bounds || !canCopySelectedOcr.value) {
-    clearCopyTip()
+function onOcrButtonClick(): void {
+  if (ocrStatus.value === 'ready' && ocrText.value.trim()) {
+    openOcrTextPanel()
     return
   }
-  copyTip.value = {
-    x: clamp(((bounds.x0 + bounds.x1) / 2) * zoom.value, 8, natural.value.width * zoom.value - 58),
-    y: clamp(bounds.y1 * zoom.value + 8, 8, natural.value.height * zoom.value - 34),
-    text: '复制'
-  }
-}
-
-async function copySelectedOcr(): Promise<void> {
-  const text = selectedOcrText.value
-  if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-    if (copyTip.value) copyTip.value = { ...copyTip.value, text: '已复制' }
-    ocrMessage.value = '已复制'
-    if (copyTipTimer) clearTimeout(copyTipTimer)
-    copyTipTimer = setTimeout(() => {
-      clearCopyTip()
-      if (ocrMessage.value.startsWith('已复制')) ocrMessage.value = ''
-    }, 1400)
-  } catch {
-    ocrMessage.value = '复制失败'
-  }
+  void startOcr('manual')
 }
 
 async function copyAllOcr(): Promise<void> {
   if (!canCopyAllOcr.value) return
-  selectedOcrIds.value = new Set(ocrTokens.value.map((token) => token.id))
-  await copySelectedOcr()
-  if (ocrMessage.value === '已复制') ocrMessage.value = '已复制全部'
+  try {
+    await navigator.clipboard.writeText(ocrText.value)
+    ocrTextCopied.value = true
+    ocrMessage.value = '已复制全部'
+    if (ocrCopyTimer) clearTimeout(ocrCopyTimer)
+    ocrCopyTimer = setTimeout(() => {
+      ocrTextCopied.value = false
+      if (ocrMessage.value === '已复制全部') ocrMessage.value = ''
+    }, 1400)
+  } catch {
+    ocrMessage.value = '复制失败'
+  }
 }
 
 async function onImageLoad(event: Event): Promise<void> {
@@ -524,20 +449,25 @@ function panBy(dx: number, dy: number): void {
   viewMode.value = 'free'
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  const element = target instanceof HTMLElement ? target : null
+  if (!element) return false
+  return element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement || element.isContentEditable
+}
+
 function onKey(event: KeyboardEvent): void {
   const key = event.key
   const saveShortcut = (event.metaKey || event.ctrlKey) && key.toLowerCase() === 's'
-  const copyShortcut = (event.metaKey || event.ctrlKey) && key.toLowerCase() === 'c'
   if (key === 'Escape') {
     event.preventDefault()
+    if (ocrTextPanelOpen.value) {
+      closeOcrTextPanel()
+      return
+    }
     emit('close')
     return
   }
-  if (copyShortcut && canCopySelectedOcr.value) {
-    event.preventDefault()
-    void copySelectedOcr()
-    return
-  }
+  if (isEditableTarget(event.target)) return
   if (!canUseImage.value && !saveShortcut) return
   if (key === '+' || key === '=') {
     event.preventDefault()
@@ -632,39 +562,44 @@ onBeforeUnmount(() => {
           @load="onImageLoad"
           @error="onImageError"
         />
-        <div
-          v-if="ocrTokens.length > 0 || ocrStatus === 'ready'"
-          ref="ocrLayerEl"
-          class="ocr-layer"
-          :class="{ selectable: canSelectOcr, paused: ocrStatus === 'ready' && rotation !== 0 }"
-          title="拖选图片文字"
-        >
-          <span
-            v-for="token in ocrTokens"
-            :key="token.id"
-            class="ocr-token"
-            :class="{ selected: selectedOcrIds.has(token.id) }"
-            :style="ocrTokenStyle(token)"
-            aria-hidden="true"
-            @pointerdown.stop.prevent="onOcrPointerDown($event, token)"
-            @pointermove.stop.prevent="onOcrPointerMove"
-            @pointerup.stop.prevent="finishOcrSelection"
-            @pointercancel.stop.prevent="finishOcrSelection"
-            @dblclick.stop
-          ></span>
-          <button
-            v-if="copyTip"
-            class="ocr-copy"
-            type="button"
-            :style="copyTipStyle"
-            @pointerdown.stop
-            @click.stop="copySelectedOcr"
-          >
-            {{ copyTip.text }}
-          </button>
-        </div>
       </div>
     </main>
+
+    <section
+      v-if="ocrTextPanelOpen"
+      class="ocr-panel"
+      role="dialog"
+      aria-label="识别结果"
+      @pointerdown.stop
+      @pointermove.stop
+      @pointerup.stop
+      @wheel.stop
+      @dblclick.stop
+    >
+      <header class="ocr-panel-head">
+        <div class="ocr-panel-title">
+          <strong>识别结果</strong>
+          <span>{{ ocrText.length }} 字</span>
+        </div>
+        <button class="panel-close" type="button" title="关闭" @click="closeOcrTextPanel">
+          <PantryIcon name="x" :size="16" />
+        </button>
+      </header>
+      <textarea
+        ref="ocrTextAreaEl"
+        class="ocr-textarea"
+        :value="ocrText"
+        readonly
+        spellcheck="false"
+      ></textarea>
+      <footer class="ocr-panel-actions">
+        <span class="ocr-copy-state">{{ ocrTextCopied ? '已复制' : '' }}</span>
+        <button class="ocr-panel-copy" type="button" @click="copyAllOcr">
+          <PantryIcon name="copy" :size="15" />
+          复制全部
+        </button>
+      </footer>
+    </section>
 
     <footer class="viewer-menu" role="toolbar" aria-label="图片查看工具" @click.stop>
       <span class="zoom-readout">{{ broken ? '不可用' : loading ? '加载中' : zoomLabel }}</span>
@@ -702,7 +637,7 @@ onBeforeUnmount(() => {
         type="button"
         :title="ocrButtonTitle"
         :disabled="!canStartOcr"
-        @click="startOcr('manual')"
+        @click="onOcrButtonClick"
       >
         <PantryIcon :name="isOcrBusy ? 'loader' : 'text-select'" :size="17" />
       </button>
@@ -850,58 +785,128 @@ onBeforeUnmount(() => {
   pointer-events: none;
   border-radius: inherit;
 }
-.ocr-layer {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  overflow: hidden;
-}
-.ocr-layer.selectable {
-  cursor: default;
-  pointer-events: none;
-}
-.ocr-layer.paused {
-  cursor: not-allowed;
-  pointer-events: none;
-}
-.ocr-token {
-  position: absolute;
-  border-radius: 1px;
-  background: transparent;
-  opacity: 1;
-  pointer-events: none;
-}
-.ocr-layer.selectable .ocr-token {
-  cursor: text;
-  pointer-events: auto;
-}
-.ocr-layer.selectable .ocr-token:hover {
-  background: rgba(91, 191, 145, 0.12);
-}
-.ocr-token.selected {
-  background: rgba(91, 191, 145, 0.34);
-}
-.ocr-copy {
-  position: absolute;
-  min-width: 48px;
-  height: 28px;
+.ocr-panel {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  bottom: 70px;
+  width: min(420px, calc(100vw - 28px));
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
+  background: rgba(24, 28, 26, 0.82);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+  z-index: 3;
+}
+.ocr-panel-head {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.11);
+}
+.ocr-panel-title {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ocr-panel-title strong {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+}
+.ocr-panel-title span {
+  color: rgba(245, 247, 246, 0.56);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.panel-close {
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(245, 247, 246, 0.72);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+.panel-close:hover {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.1);
+}
+.ocr-textarea {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  outline: none;
+  resize: none;
+  padding: 12px 14px;
+  color: rgba(245, 247, 246, 0.92);
+  background: rgba(8, 10, 9, 0.26);
+  font: 13px/1.62 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0;
+  white-space: pre-wrap;
+  cursor: text;
+  user-select: text;
+}
+.ocr-textarea::selection {
+  color: #ffffff;
+  background: rgba(61, 139, 107, 0.72);
+}
+.ocr-panel-actions {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.11);
+}
+.ocr-copy-state {
+  min-width: 42px;
+  color: rgba(91, 191, 145, 0.9);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.ocr-panel-copy {
+  height: 30px;
+  border: 1px solid rgba(91, 191, 145, 0.32);
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 0 10px;
   color: #ffffff;
-  background: rgba(34, 39, 36, 0.86);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(14px);
+  background: rgba(61, 139, 107, 0.78);
+  cursor: pointer;
   font-size: 12px;
   font-weight: 700;
-  white-space: nowrap;
-  cursor: pointer;
-  pointer-events: auto;
-  transform: translateX(-50%);
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.16s ease;
 }
-.ocr-copy:hover {
+.ocr-panel-copy:hover {
+  border-color: rgba(91, 191, 145, 0.5);
   background: rgba(61, 139, 107, 0.92);
+}
+.ocr-panel-copy:active {
+  transform: translateY(1px);
 }
 .viewer-state {
   position: absolute;
@@ -925,7 +930,8 @@ onBeforeUnmount(() => {
 }
 
 @supports not (backdrop-filter: blur(18px)) {
-  .viewer-menu {
+  .viewer-menu,
+  .ocr-panel {
     background: #1c201e;
   }
 }
@@ -935,11 +941,20 @@ onBeforeUnmount(() => {
     bottom: 10px;
     max-width: calc(100vw - 16px);
   }
+  .ocr-panel {
+    top: 10px;
+    right: 10px;
+    bottom: 64px;
+    left: 10px;
+    width: auto;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .tool,
-  .image-plane {
+  .image-plane,
+  .panel-close,
+  .ocr-panel-copy {
     transition: none;
   }
   .tool.busy :deep(.pantry-icon) {

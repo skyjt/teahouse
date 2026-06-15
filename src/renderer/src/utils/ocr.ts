@@ -16,11 +16,6 @@ export interface OcrBox {
   y1: number
 }
 
-export interface OcrPoint {
-  x: number
-  y: number
-}
-
 export interface OcrToken {
   id: string
   text: string
@@ -126,48 +121,6 @@ export function isAutoOcrCandidate(width: number, height: number, bytes: number)
   return width * height <= OCR_AUTO_MAX_PIXELS && bytes <= OCR_AUTO_MAX_BYTES
 }
 
-export function findNearestOcrTokenIndex(tokens: OcrToken[], point: OcrPoint): number | null {
-  if (tokens.length === 0) return null
-  const lines = groupTokensByLine(tokens)
-  const line = nearestLine(lines, point.y)
-  if (!line || line.tokens.length === 0) return null
-
-  let nearest = line.tokens[0]
-  let nearestDistance = Infinity
-  for (const token of line.tokens) {
-    const centerX = (token.bbox.x0 + token.bbox.x1) / 2
-    const distance = Math.abs(point.x - centerX)
-    if (distance < nearestDistance) {
-      nearest = token
-      nearestDistance = distance
-    }
-  }
-  return nearest.tokenIndex
-}
-
-export function getOcrTokenRangeIds(tokens: OcrToken[], startTokenIndex: number, endTokenIndex: number): string[] {
-  const minIndex = Math.min(startTokenIndex, endTokenIndex)
-  const maxIndex = Math.max(startTokenIndex, endTokenIndex)
-  return tokens
-    .filter((token) => token.tokenIndex >= minIndex && token.tokenIndex <= maxIndex)
-    .sort((a, b) => a.tokenIndex - b.tokenIndex)
-    .map((token) => token.id)
-}
-
-export function getOcrSelectionBounds(tokens: OcrToken[], selectedIds: Set<string>): OcrBox | null {
-  const selected = tokens.filter((token) => selectedIds.has(token.id))
-  if (selected.length === 0) return null
-  return selected.reduce<OcrBox>(
-    (bounds, token) => ({
-      x0: Math.min(bounds.x0, token.bbox.x0),
-      y0: Math.min(bounds.y0, token.bbox.y0),
-      x1: Math.max(bounds.x1, token.bbox.x1),
-      y1: Math.max(bounds.y1, token.bbox.y1)
-    }),
-    { ...selected[0].bbox }
-  )
-}
-
 export function getSelectedOcrText(tokens: OcrToken[], selectedIds: Set<string>): string {
   const selected = tokens
     .filter((token) => selectedIds.has(token.id))
@@ -193,53 +146,10 @@ export function getSelectedOcrText(tokens: OcrToken[], selectedIds: Set<string>)
   return lines.join('\n')
 }
 
-interface OcrLineExtent {
-  lineIndex: number
-  minY: number
-  maxY: number
-  tokens: OcrToken[]
-}
-
-function groupTokensByLine(tokens: OcrToken[]): OcrLineExtent[] {
-  const byLine = new Map<number, OcrLineExtent>()
-  for (const token of tokens) {
-    const existing = byLine.get(token.lineIndex)
-    if (existing) {
-      existing.minY = Math.min(existing.minY, token.bbox.y0)
-      existing.maxY = Math.max(existing.maxY, token.bbox.y1)
-      existing.tokens.push(token)
-    } else {
-      byLine.set(token.lineIndex, {
-        lineIndex: token.lineIndex,
-        minY: token.bbox.y0,
-        maxY: token.bbox.y1,
-        tokens: [token]
-      })
-    }
-  }
-  return Array.from(byLine.values())
-    .map((line) => ({
-      ...line,
-      tokens: line.tokens.sort((a, b) => a.tokenIndex - b.tokenIndex)
-    }))
-    .sort((a, b) => a.lineIndex - b.lineIndex)
-}
-
-function nearestLine(lines: OcrLineExtent[], y: number): OcrLineExtent | null {
-  let nearest: OcrLineExtent | null = null
-  let nearestDistance = Infinity
-  for (const line of lines) {
-    const distance = y < line.minY
-      ? line.minY - y
-      : y > line.maxY
-        ? y - line.maxY
-        : 0
-    if (distance < nearestDistance) {
-      nearest = line
-      nearestDistance = distance
-    }
-  }
-  return nearest
+export function getOcrResultText(result: OcrResult): string {
+  const text = result.text.trim()
+  if (text) return text
+  return getSelectedOcrText(result.tokens, new Set(result.tokens.map((token) => token.id))).trim()
 }
 
 export async function recognizeImageText(params: {
