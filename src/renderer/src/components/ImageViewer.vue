@@ -10,6 +10,11 @@ import {
   type OcrResult,
   type OcrToken
 } from '../utils/ocr'
+import {
+  offsetForAnchoredZoom,
+  pointFromImageRect,
+  type ImagePoint
+} from '../utils/image-viewer-geometry'
 import PantryIcon from './PantryIcon.vue'
 
 const props = defineProps<{ src: string; transferId: string }>()
@@ -20,7 +25,7 @@ const MAX_ZOOM = 6
 const ZOOM_STEP = 1.2
 const PAN_STEP = 48
 
-type Point = { x: number; y: number }
+type Point = ImagePoint
 type DragStart = Point & { offsetX: number; offsetY: number }
 type OcrStatus = 'idle' | 'loading-source' | 'recognizing' | 'ready' | 'error'
 type SelectionRect = { x: number; y: number; width: number; height: number }
@@ -89,7 +94,9 @@ const imageStyle = computed(() => {
   return {
     width: `${width}px`,
     height: `${height}px`,
-    transform: `translate3d(${offset.value.x}px, ${offset.value.y}px, 0) rotate(${rotation.value}deg)`
+    left: `calc(50% + ${offset.value.x}px)`,
+    top: `calc(50% + ${offset.value.y}px)`,
+    transform: `translate3d(-50%, -50%, 0) rotate(${rotation.value}deg)`
   }
 })
 const selectionStyle = computed(() => {
@@ -148,28 +155,30 @@ function pointFromImageClient(clientX: number, clientY: number): Point | null {
   const plane = imagePlaneEl.value
   if (!plane || zoom.value <= 0 || rotation.value !== 0) return null
   const rect = plane.getBoundingClientRect()
-  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
-    return null
-  }
-  return {
-    x: clamp((clientX - rect.left) / zoom.value, 0, natural.value.width),
-    y: clamp((clientY - rect.top) / zoom.value, 0, natural.value.height)
-  }
+  return pointFromImageRect({
+    clientX,
+    clientY,
+    rect,
+    zoom: zoom.value,
+    naturalWidth: natural.value.width,
+    naturalHeight: natural.value.height
+  })
 }
 
 function applyZoomAroundPoint(nextZoom: number, imagePoint: Point, clientPoint: Point): void {
-  const clampedZoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM)
-  const viewportCenter = {
-    x: window.innerWidth / 2,
-    y: window.innerHeight / 2
-  }
-  const nextWidth = natural.value.width * clampedZoom
-  const nextHeight = natural.value.height * clampedZoom
-  zoom.value = clampedZoom
-  offset.value = {
-    x: clientPoint.x - viewportCenter.x + nextWidth / 2 - imagePoint.x * clampedZoom,
-    y: clientPoint.y - viewportCenter.y + nextHeight / 2 - imagePoint.y * clampedZoom
-  }
+  const next = offsetForAnchoredZoom({
+    clientPoint,
+    imagePoint,
+    naturalWidth: natural.value.width,
+    naturalHeight: natural.value.height,
+    nextZoom,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    minZoom: MIN_ZOOM,
+    maxZoom: MAX_ZOOM
+  })
+  zoom.value = next.zoom
+  offset.value = next.offset
   viewMode.value = 'free'
 }
 
@@ -629,10 +638,6 @@ onBeforeUnmount(() => {
           class="ocr-layer"
           :class="{ selectable: canSelectOcr, paused: ocrStatus === 'ready' && rotation !== 0 }"
           title="拖选图片文字"
-          @pointerdown.stop.prevent="onOcrPointerDown"
-          @pointermove.stop.prevent="onOcrPointerMove"
-          @pointerup.stop.prevent="finishOcrSelection"
-          @pointercancel.stop.prevent="finishOcrSelection"
         >
           <span
             v-for="token in ocrTokens"
@@ -641,6 +646,11 @@ onBeforeUnmount(() => {
             :class="{ selected: selectedOcrIds.has(token.id) }"
             :style="ocrTokenStyle(token)"
             aria-hidden="true"
+            @pointerdown.stop.prevent="onOcrPointerDown"
+            @pointermove.stop.prevent="onOcrPointerMove"
+            @pointerup.stop.prevent="finishOcrSelection"
+            @pointercancel.stop.prevent="finishOcrSelection"
+            @dblclick.stop
           ></span>
           <span v-if="ocrSelectRect" class="ocr-selection" :style="selectionStyle"></span>
           <button
@@ -813,7 +823,7 @@ onBeforeUnmount(() => {
   cursor: grabbing;
 }
 .image-plane {
-  position: relative;
+  position: absolute;
   max-width: none;
   max-height: none;
   user-select: none;
@@ -850,10 +860,11 @@ onBeforeUnmount(() => {
 }
 .ocr-layer.selectable {
   cursor: default;
-  pointer-events: auto;
+  pointer-events: none;
 }
 .ocr-layer.paused {
   cursor: not-allowed;
+  pointer-events: none;
 }
 .ocr-token {
   position: absolute;
@@ -897,6 +908,7 @@ onBeforeUnmount(() => {
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
+  pointer-events: auto;
   transform: translateX(-50%);
 }
 .ocr-copy:hover {
