@@ -22,6 +22,7 @@ export interface OcrToken {
   confidence: number
   bbox: OcrBox
   lineIndex: number
+  wordIndex: number
   tokenIndex: number
 }
 
@@ -125,17 +126,17 @@ export function getSelectedOcrText(tokens: OcrToken[], selectedIds: Set<string>)
   const lines: string[] = []
   let currentLine = selected[0].lineIndex
   let lineText = ''
-  let previous = ''
+  let previousToken: OcrToken | null = null
 
   for (const token of selected) {
     if (token.lineIndex !== currentLine) {
       if (lineText.trim()) lines.push(lineText.trim())
       currentLine = token.lineIndex
       lineText = ''
-      previous = ''
+      previousToken = null
     }
-    lineText += shouldInsertSpace(previous, token.text) ? ` ${token.text}` : token.text
-    previous = token.text
+    lineText += shouldInsertSpace(previousToken, token) ? ` ${token.text}` : token.text
+    previousToken = token
   }
   if (lineText.trim()) lines.push(lineText.trim())
   return lines.join('\n')
@@ -272,6 +273,7 @@ function normalizeOcrResult(page: TesseractPage, scale: number): OcrResult {
       for (const line of paragraph.lines ?? []) {
         const lineTokens: string[] = []
         const lineId = `line-${lineIndex}`
+        let wordIndex = 0
         for (const word of line.words ?? []) {
           const units = splitWordIntoTokens(word)
           for (const unit of units) {
@@ -283,12 +285,14 @@ function normalizeOcrResult(page: TesseractPage, scale: number): OcrResult {
               confidence: unit.confidence,
               bbox: scaleBox(unit.bbox, scale),
               lineIndex,
+              wordIndex,
               tokenIndex
             }
             tokens.push(token)
             lineTokens.push(token.id)
             tokenIndex += 1
           }
+          wordIndex += 1
         }
         if (lineTokens.length > 0) {
           lines.push({
@@ -318,7 +322,7 @@ function splitWordIntoTokens(word: TesseractWord): Array<{
   bbox: TesseractBbox
 }> {
   const symbols = word.symbols ?? []
-  if (symbols.length > 1 && mostlyCjk(word.text)) {
+  if (symbols.length > 0) {
     return symbols.map((symbol) => ({
       text: symbol.text,
       confidence: symbol.confidence,
@@ -348,16 +352,10 @@ function normalizePageText(text: string | undefined, tokens: OcrToken[]): string
   return getSelectedOcrText(tokens, new Set(tokens.map((token) => token.id)))
 }
 
-function mostlyCjk(text: string): boolean {
-  const chars = Array.from(text.replace(/\s/g, ''))
-  if (chars.length === 0) return false
-  const cjkCount = chars.filter((char) => /[\u3400-\u9fff\uf900-\ufaff]/u.test(char)).length
-  return cjkCount / chars.length >= 0.4
-}
-
-function shouldInsertSpace(previous: string, next: string): boolean {
+function shouldInsertSpace(previous: OcrToken | null, next: OcrToken): boolean {
   if (!previous || !next) return false
-  return /[A-Za-z0-9]$/.test(previous) && /^[A-Za-z0-9]/.test(next)
+  if (previous.wordIndex === next.wordIndex) return false
+  return /[A-Za-z0-9]$/.test(previous.text) && /^[A-Za-z0-9]/.test(next.text)
 }
 
 function mimeFromName(name: string): string {

@@ -791,7 +791,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .ocr-layer.selectable {
-  cursor: crosshair;
+  cursor: default;
   pointer-events: auto;
 }
 .ocr-layer.paused {
@@ -804,6 +804,10 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 0 0 1px rgba(91, 191, 145, 0.24);
   opacity: 0.42;
   pointer-events: none;
+}
+.ocr-layer.selectable .ocr-token {
+  cursor: text;
+  pointer-events: auto;
 }
 .ocr-token.selected {
   background: rgba(91, 191, 145, 0.28);
