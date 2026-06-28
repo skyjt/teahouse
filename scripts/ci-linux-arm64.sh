@@ -9,7 +9,7 @@ APT
 printf 'Acquire::Check-Valid-Until "false";\n' >/etc/apt/apt.conf.d/99no-check-valid-until
 apt-get update
 apt-get install -y --no-install-recommends \
-  git ca-certificates python3 make g++ pkg-config dpkg fakeroot rpm ruby ruby-dev squashfs-tools \
+  git ca-certificates python3 make g++ pkg-config dpkg fakeroot rpm ruby ruby-dev libffi-dev squashfs-tools \
   xvfb xauth dbus-x11 libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 \
   xdg-utils libatspi2.0-0 libuuid1 libfuse2 libasound2 libgbm1 \
   libdrm2 libx11-xcb1
@@ -27,7 +27,7 @@ npm run build
 # CI 容器以 root 运行，Electron 启动冒烟需关闭 Chromium sandbox；应用运行时安全配置不变。
 xvfb-run -a npm run smoke -- --no-sandbox
 
-gem install --no-document ffi -v 1.17.4
+gem install --no-document ffi -v 1.15.5
 gem install --no-document fpm -v 1.9.3
 USE_SYSTEM_FPM=true USE_SYSTEM_MKSQUASHFS=true USE_HARD_LINKS=false npm run dist:linux:arm64
 
