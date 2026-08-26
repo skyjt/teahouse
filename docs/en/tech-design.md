@@ -202,7 +202,7 @@ Readable export supports self-contained HTML and plain text. The custom archive 
 | Debian 10 glibc 2.28 | Build native module inside Buster container and inspect GLIBC symbols in final package |
 | Linux arm64 packaging | Native arm64 runner inside Buster container; pinned ffi/fpm; final architecture and GLIBC checks |
 | Weak/old GPU drivers | Disable hardware acceleration by default on Windows 7 and Linux; software-rendering UI profile |
-| Wayland capture limitations | Detect Wayland and guide system capture + paste |
+| Wayland and Linux desktop capture differences | Detect Wayland from `XDG_SESSION_TYPE` (falling back to `WAYLAND_DISPLAY`) and merge-enable Electron 22's `WebRTCPipeWireCapturer`, but still probe `desktopCapturer` instead of returning early. Wait for the main-window hide signal plus compositor settling and verify invisibility before capture. Restore and provide in-app or system-notification guidance for empty sources, empty images, or exceptions, including the system-capture + `Ctrl+V` fallback. |
 | Broadcast isolation | Manual IP, rate-limited CIDR probe, gossip, persisted peer cache |
 | Large files/images | Streaming file I/O, bounded metadata/decode, pixel limits, bounded thumbnail/OCR caches |
 | Malformed/slow TCP peers | Exact frame allowlists, per-socket failure isolation, connection/stream/time budgets |

@@ -36,6 +36,7 @@ import {
   type AppInfo,
   type AppSettingsPatch,
   type ConversationSearchOptions,
+  type CaptureFailureReason,
   type DataExportOptions,
   type DataImportResult,
   type ExportFormat,
@@ -108,6 +109,12 @@ import {
   showCaptureWindow
 } from './windows/capture-window'
 import { planCaptureGeometry } from './windows/capture-geometry'
+import {
+  captureFailureNotice,
+  hideWindowForCapture,
+  isWaylandSession,
+  mergeChromiumFeature
+} from './windows/capture-support'
 import { openImageViewerWindow } from './windows/image-viewer-window'
 import { fitImageViewerContent } from './windows/image-viewer-sizing'
 import { showWindowForeground } from './windows/foreground'
@@ -170,6 +177,17 @@ const WINDOWS7 = isWindows7()
 const SOFTWARE_RENDERING = WINDOWS7 || process.platform === 'linux'
 if (SOFTWARE_RENDERING) {
   app.disableHardwareAcceleration()
+}
+
+// Electron 22 在 Wayland 上需要显式启用 PipeWire capturer 才能通过系统 portal 选屏。
+// 这里只补能力，startCapture 仍会实际探测；Wayland 不再等同于“不可截图”。
+const WAYLAND_SESSION = isWaylandSession()
+if (WAYLAND_SESSION) {
+  const features = mergeChromiumFeature(
+    app.commandLine.getSwitchValue('enable-features'),
+    'WebRTCPipeWireCapturer'
+  )
+  app.commandLine.appendSwitch('enable-features', features)
 }
 
 // 受管头像使用固定 authority + 哈希路径；提前登记为标准安全 scheme，确保 Chrome 108
@@ -1375,28 +1393,59 @@ if (!gotLock) {
     mainWindow?.webContents.send(IpcEvents.netState, netState)
   }
 
-  /** 内置截图（F-CAP-1）：抓主屏 → 框选窗 → 剪贴板（可选直发当前会话） */
-  async function startCapture(): Promise<void> {
-    if (capturing) return
-    if (process.platform === 'linux' && process.env['XDG_SESSION_TYPE'] === 'wayland') {
-      // Wayland 无法全局抓屏（tech-design §9），降级提示
-      if (Notification.isSupported()) {
+  function reportCaptureFailure(
+    reason: CaptureFailureReason,
+    wasVisible: boolean,
+    error?: unknown
+  ): void {
+    capturing = false
+    const notice = captureFailureNotice(reason, WAYLAND_SESSION)
+    console.warn('[capture]', notice.message, error ?? '')
+
+    const sendToMainWindow = (): boolean => {
+      showMainWindow({ forceForeground: true })
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send(IpcEvents.captureFailed, notice)
+        return true
+      }
+      return false
+    }
+
+    // 原本可见时恢复主窗并走应用内提示；原本隐藏时尽量不打断用户，改用系统通知。
+    if (wasVisible && sendToMainWindow()) return
+
+    if (Notification.isSupported()) {
+      try {
         const icon = systemNotificationIcon()
         new Notification({
           title: '茶话间',
-          body: 'Wayland 下请用系统截图，然后在聊天框 Ctrl+V 发送',
+          body: notice.message,
           ...(icon ? { icon } : {})
         }).show()
+        return
+      } catch (notificationError) {
+        console.warn('[capture] 系统通知失败，改用主窗口提示：', notificationError)
       }
-      return
     }
+
+    // 桌面环境不支持系统通知时显示主窗，保证全局快捷键失败也不会无声无息。
+    sendToMainWindow()
+  }
+
+  /** 内置截图（F-CAP-1）：抓主屏 → 框选窗 → 剪贴板（可选直发当前会话） */
+  async function startCapture(): Promise<void> {
+    if (capturing) return
     capturing = true
     const hide = appState?.config.hideOnCapture !== false
-    const wasVisible = mainWindow?.isVisible() ?? false
+    const captureMainWindow = mainWindow
+    const wasVisible = captureMainWindow?.isVisible() ?? false
     try {
-      if (hide && wasVisible) {
-        mainWindow?.hide()
-        await new Promise((r) => setTimeout(r, 180)) // 等窗口淡出再抓屏
+      if (hide && wasVisible && captureMainWindow) {
+        const hidden = await hideWindowForCapture(captureMainWindow)
+        if (!hidden) {
+          reportCaptureFailure('window-hide-failed', wasVisible)
+          return
+        }
       }
       const display = screen.getPrimaryDisplay()
       const sources = await desktopCapturer.getSources({
@@ -1409,8 +1458,7 @@ if (!gotLock) {
       const source =
         sources.find((s) => s.display_id === String(display.id)) ?? sources[0] ?? null
       if (!source || source.thumbnail.isEmpty()) {
-        capturing = false
-        if (wasVisible) showMainWindow({ forceForeground: true })
+        reportCaptureFailure('screen-unavailable', wasVisible)
         return
       }
       const sourceSize = source.thumbnail.getSize()
@@ -1428,11 +1476,14 @@ if (!gotLock) {
         crop.height !== sourceSize.height
       const captureImage = needsCrop ? source.thumbnail.crop(crop) : source.thumbnail
       if (captureImage.isEmpty()) {
-        capturing = false
-        if (wasVisible) showMainWindow({ forceForeground: true })
+        reportCaptureFailure('image-empty', wasVisible)
         return
       }
       const png = captureImage.toPNG()
+      if (png.byteLength === 0) {
+        reportCaptureFailure('image-empty', wasVisible)
+        return
+      }
       const pngBytes = png.buffer.slice(
         png.byteOffset,
         png.byteOffset + png.byteLength
@@ -1442,9 +1493,7 @@ if (!gotLock) {
         if (wasVisible) showMainWindow({ forceForeground: true })
       })
     } catch (err) {
-      console.warn('[capture] 抓屏失败（macOS 需授予屏幕录制权限）：', err)
-      capturing = false
-      if (wasVisible) showMainWindow({ forceForeground: true })
+      reportCaptureFailure('unexpected', wasVisible, err)
     }
   }
 

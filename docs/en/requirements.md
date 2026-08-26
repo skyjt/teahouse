@@ -123,7 +123,7 @@ The v0.51.1 localization applies to repository and release documentation. Applic
 
 ### 6.4 Capture, desktop, and settings
 
-- Region capture supports multi-display work areas, annotation tools, copy/send, and Wayland fallback guidance.
+- Region capture supports multi-display work areas, annotation tools, and copy/send. On Wayland it enables the PipeWire portal and attempts real source capture instead of rejecting the session up front. Empty sources, empty images, and capture errors restore the main window and produce visible in-app feedback; hidden shortcut invocations use a system notification when available. Every failure offers system capture plus chat-box `Ctrl+V` as a fallback. Before capture, hiding the main window waits for the hide signal and compositor settling, then verifies that the window is no longer visible.
 - Tray state, unread attention, native notifications, startup, close behavior, and global shortcuts work across the platform matrix.
 - Notifications suppress message bodies in logs and honor user settings, conversation mute, current visibility/focus, and mention rules.
 - Settings cover identity, organization, avatar, directories, receive behavior, notifications, startup, theme, font size, send key, shortcuts, ports, backup/import, and About.

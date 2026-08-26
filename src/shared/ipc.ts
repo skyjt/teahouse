@@ -125,6 +125,8 @@ export const IpcEvents = {
   captureInit: 'capture:init',
   /** 截图完成且选择"发送"→ 主窗（发到当前会话） */
   captured: 'ui:captured',
+  /** 内置截图无法继续时给主窗的可见提示（系统通知不可用时也不能静默） */
+  captureFailed: 'capture:failed',
   /** 点击系统通知/托盘 → 主窗定位到会话 */
   openConv: 'ui:open-conv',
   /** 设置页保存后广播给所有窗口，统一主题/字体等外观 */
@@ -690,6 +692,17 @@ export type ProfileAvatarChoice =
   | { kind: 'preset'; avatar: number }
   | { kind: 'custom'; bytes: ArrayBuffer }
 
+export type CaptureFailureReason =
+  | 'window-hide-failed'
+  | 'screen-unavailable'
+  | 'image-empty'
+  | 'unexpected'
+
+export interface CaptureFailureNotice {
+  reason: CaptureFailureReason
+  message: string
+}
+
 /** preload 经 contextBridge 暴露到 window.pantry 的 API 形状 */
 export interface PantryApi {
   getAppInfo(): Promise<AppInfo>
@@ -885,6 +898,8 @@ export interface PantryApi {
   onCaptureInit(listener: (pngBytes: ArrayBuffer) => void): () => void
   /** 主窗：截图选择"发送"后的字节流 */
   onCaptured(listener: (bytes: ArrayBuffer) => void): () => void
+  /** 主窗：截图未能启动时显示可见反馈。 */
+  onCaptureFailed(listener: (notice: CaptureFailureNotice) => void): () => void
   /** 点通知/托盘后主进程要求打开某会话 */
   onOpenConv(listener: (convId: string) => void): () => void
   /** 设置变更后同步主窗/设置窗外观 */

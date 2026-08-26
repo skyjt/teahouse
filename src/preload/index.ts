@@ -8,6 +8,7 @@ import {
   type ConversationMessageHit,
   type ConversationSearchOptions,
   type ConversationView,
+  type CaptureFailureNotice,
   type DataExportOptions,
   type DataImportResult,
   type ExportFormat,
@@ -259,6 +260,8 @@ const api: PantryApi = {
   onGroupUpdated: (listener) => subscribe<GroupView>(IpcEvents.groupUpdated, listener),
   onCaptureInit: (listener) => captureInitReplay.subscribe(listener),
   onCaptured: (listener) => subscribe<ArrayBuffer>(IpcEvents.captured, listener),
+  onCaptureFailed: (listener) =>
+    subscribe<CaptureFailureNotice>(IpcEvents.captureFailed, listener),
   onOpenConv: (listener) => subscribe<string>(IpcEvents.openConv, listener),
   onSettingsUpdated: (listener) => subscribe<SettingsView>(IpcEvents.settingsUpdated, listener),
   onAvatarReady: (listener) => subscribe<string>(IpcEvents.avatarReady, listener),
