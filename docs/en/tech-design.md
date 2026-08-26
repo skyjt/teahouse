@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.61 for v0.51.1 |
+| Current design | v1.62 for v0.51.2 |
 | Runtime baseline | Electron 22.3.27 / Node 16.17 / Chrome 108 |
 | Upstream | [Requirements](requirements.md), [Protocol](protocol.md), and [UI design](ui-design.md) |
 | Authority | [tech-design.md](../tech-design.md) is the canonical technical design record |
@@ -253,9 +253,11 @@ Network integration binds `127.0.0.1` and uses empty broadcast targets. It must 
 | v0.47–v0.49 | Shared file cabinet permissions, browsing, download, upload |
 | v0.50–v0.51 | First-class cabinet navigation, finalized as the third main-window tab |
 | v0.51.1 | Maintained English documentation, locale validation, bilingual release headings |
+| v0.51.2 | Capability-first Wayland capture, verified main-window hiding, visible failure feedback |
 | Paused | Neiwangtong compatibility and experimental attachment interoperability |
 | v1.0 work | Target-platform polish, updater completion, release documentation |
 
 ## 14. Change record
 
 - **2026-08-10, v1.61, decision #285:** introduced the maintained English technical reference, document-pair validation, and bilingual release headings; corrected the public development guide to the actual PaddleOCR/onnxruntime-web stack. Runtime architecture, protocol, database, and dependencies are unchanged. Repository version 0.51.0 → 0.51.1.
+- **2026-08-26, v1.62, decision #286:** merge-enabled Electron 22's `WebRTCPipeWireCapturer` for Wayland while retaining capability probing through `desktopCapturer`; extracted hide-signal/compositor settling with a final visibility check; and added a main-to-renderer `capture:failed` path plus system-notification fallback. Protocol v0.50, SQLite v14, dependencies, and network behavior are unchanged. Repository version 0.51.1 → 0.51.2.

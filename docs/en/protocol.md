@@ -43,7 +43,7 @@ Profiles carried by `entry`, `alive`, and `profile` include:
   "team": "Desktop",
   "avatar": 3,
   "profileRev": 7,
-  "ver": "0.51.1",
+  "ver": "0.51.2",
   "host": "alex-pc",
   "platform": "win",
   "tcpPort": 17879,
@@ -303,3 +303,7 @@ Per-peer list rate is five requests per ten seconds. Requests time out after eig
 - Keep update and cabinet offers bound to short-lived, source-specific authorization.
 - Never log message text, file bytes, or sensitive local paths.
 - Keep the main protocol independent from the paused Neiwangtong adapter described in [nwt-compat-design.md](nwt-compat-design.md).
+
+## 11. Change record
+
+- **2026-08-26, decision #286:** the Linux/Wayland capture fix adds only local desktop capability probing and main-to-renderer feedback. Wire protocol v0.50, capabilities, transfer sequencing, and compatibility behavior remain unchanged. Repository version 0.51.1 → 0.51.2.

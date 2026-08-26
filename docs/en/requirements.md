@@ -4,8 +4,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.51.1; Neiwangtong compatibility remains paused by decision #199 |
-| Updated | 2026-08-10 |
+| Status | Current for v0.51.2; Neiwangtong compatibility remains paused by decision #199 |
+| Updated | 2026-08-26 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
 ## 1. Product goals
@@ -153,6 +153,7 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 | Decision | Context | Outcome |
 |---|---|---|
 | #285 | Publish maintainable English README, user/developer guides, and current design documentation | Keep established Chinese paths canonical; add English counterparts and bidirectional navigation; validate document coverage and links in CI; use bilingual GitHub Release headings; ship as v0.51.1. Application UI language remains unchanged. |
+| #286 | Kylin and UOS/Huawei systems can ignore capture clicks or retain the main window in screenshots (#29 / #31) | Enable Electron 22's PipeWire capturer on Wayland but still probe `desktopCapturer`; wait for the hide signal and compositor settling, verify invisibility, and surface every empty-source/image/error outcome in-app or through a system notification with a system-capture + `Ctrl+V` fallback. Ship as v0.51.2 without protocol, database, dependency, or network changes. |
 
 ## 9. Open items
 
