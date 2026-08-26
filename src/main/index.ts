@@ -2737,14 +2737,18 @@ if (!gotLock) {
 
   ipcMain.handle(IpcChannels.groupList, () => groups?.list() ?? [])
 
-  ipcMain.handle(IpcChannels.groupSend, (_event, groupId: unknown, text: unknown, mentions: unknown) => {
+  ipcMain.handle(IpcChannels.groupSend, (_event, groupId: unknown, text: unknown, mentions: unknown, replyTo: unknown) => {
     if (typeof groupId !== 'string' || groupId.length > 64) return null
     if (typeof text !== 'string' || text.length === 0 || text.length > 4096) return null
     const cleanMentions =
       Array.isArray(mentions) && mentions.every((m) => typeof m === 'string' && m.length <= 64)
         ? (mentions as string[]).slice(0, GROUP_MAX_MEMBERS)
         : []
-    return groups?.sendText(groupId, text, cleanMentions) ?? null
+    const replyMeta =
+      replyTo && typeof replyTo === 'object' && 'id' in replyTo && 'senderName' in replyTo && 'text' in replyTo
+        ? (replyTo as { id: string; senderName: string; text: string })
+        : undefined
+    return groups?.sendText(groupId, text, cleanMentions, replyMeta) ?? null
   })
 
   ipcMain.handle(IpcChannels.captureStart, () => startCapture())

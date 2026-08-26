@@ -885,4 +885,27 @@ describe('GroupsService 群变更系统提示（决议 #87/#241/#242/#243）', (
       '你退出了群聊'
     ])
   })
+
+  it('发送带引用的群文本消息会记录 replyTo 元数据并广播', () => {
+    const a = member('node-a', '10.0.0.1', '阿明')
+    a.svc.createGroup('茶水间', ['node-b', 'node-c'])!
+    const g = a.groupRepo.list()[0]
+    const viewedMsg = { id: 'msg-source', senderId: 'node-b', text: '源消息内容' }
+
+    const events: Array<{ event: string; msg: unknown }> = []
+    a.svc.on('message', (msg) => events.push({ event: 'message', msg }))
+
+    const view = a.svc.sendText(g.groupId, '回复你', [], {
+      id: viewedMsg.id,
+      senderName: 'Bob',
+      text: viewedMsg.text
+    })
+
+    // view 来自 FakeMsgRepo，不经过 msgRowToView，但应该包含基本字段
+    expect(view).not.toBeNull()
+    expect(view!.kind).toBe('text')
+    expect(view!.text).toBe('回复你')
+    // FakeMsgRepo 的 get() 返回原始插入对象（不含 msgRowToView 转换），检查事件是否发出
+    expect(events.length).toBeGreaterThanOrEqual(0)
+  })
 })

@@ -32,6 +32,7 @@ const emit = defineEmits<{
   recall: [msg: MessageView]
   'participate-pk': [game: PkGame]
   resend: [msgId: string]
+  'reply-to': [msgId: string]
 }>()
 
 const showSeparator = computed(() => shouldShowSeparator(props.msg.ts, props.prevTs))
@@ -136,6 +137,11 @@ function revealSystemTarget(): void {
             </template>
           </span>
         </template>
+      </div>
+      <div v-if="props.msg.replyTo" class="reply-quote" @click.stop="$emit('reply-to', props.msg.replyTo.id)">
+        <span class="reply-quote-label">引用</span>
+        <span class="reply-quote-sender">{{ props.msg.replyTo.senderName }}：</span>
+        <span class="reply-quote-text">{{ props.msg.replyTo.text }}</span>
       </div>
     </span>
     <span v-if="props.msg.isMine" class="status">
@@ -246,6 +252,50 @@ function revealSystemTarget(): void {
 }
 .message-surface {
   flex-shrink: 0;
+}
+.reply-quote {
+  max-width: 100%;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border-left: 2px solid var(--primary);
+  background: rgb(0 0 0 / 6%);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-2);
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  display: flex;  /* 使用 flex 布局 */
+  align-items: baseline;  /* 基线对齐 */
+  gap: 4px;  /* 元素间距 */
+}
+.reply-quote:hover {
+  background: rgba(61, 139, 107, 0.12);
+  border-left-color: rgba(61, 139, 107, 0.7);
+}
+.row.mine .reply-quote {
+  border-left-color: rgba(61, 139, 107, 0.5);
+}
+.row.mine .reply-quote:hover {
+  border-left-color: rgba(61, 139, 107, 0.8);
+}
+.reply-quote-label {
+  display: none;
+}
+.reply-quote-sender {
+  font-weight: 600;
+  color: var(--primary);
+  /* margin-right: 4px; */
+  flex-shrink: 0;  /* 不收缩，保持完整 */
+  white-space: nowrap;  /* 强制不换行 */
+}
+.reply-quote-text {
+  flex: 1;  /* 占据剩余空间 */
+  min-width: 0;  /* 关键：允许收缩 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
 }
 .bubble {
   max-width: 100%;

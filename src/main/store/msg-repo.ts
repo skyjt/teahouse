@@ -1,5 +1,5 @@
 import type DatabaseT from 'better-sqlite3'
-import type { FileRefView, MessageView, PkRefView } from '../../shared/ipc'
+import type { FileRefView, MessageView, PkRefView, ReplyMeta } from '../../shared/ipc'
 import { parsePkRef } from '../../shared/pk'
 import { toFtsTokens } from './fts'
 
@@ -14,6 +14,7 @@ export interface MsgRow {
   ts: number
   seq: number
   status: string
+  reply_to?: string | null
 }
 
 export interface NewMessage {
@@ -27,12 +28,15 @@ export interface NewMessage {
   fileRef?: string
   ts: number
   status: 'sending' | 'sent' | 'queued' | 'failed' | 'canceled' | 'recalled'
+  /** 引用的源消息元数据（senderName + text），仅群聊文本消息可携带；存入 reply_to JSON */
+  replyTo?: ReplyMeta
 }
 
 /** 行 → 渲染层视图（chat 与 files 服务共用） */
 export function msgRowToView(row: MsgRow): MessageView {
   let fileRef: FileRefView | undefined
   let pkRef: PkRefView | undefined
+  let replyTo: ReplyMeta | undefined
   if (row.kind === 'pk') {
     pkRef = parsePkRef(row.file_ref) ?? undefined
   } else if (row.file_ref) {
@@ -40,6 +44,18 @@ export function msgRowToView(row: MsgRow): MessageView {
       fileRef = JSON.parse(row.file_ref) as FileRefView
     } catch {
       fileRef = undefined
+    }
+  }
+  if (row.reply_to) {
+    if (row.reply_to.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(row.reply_to) as ReplyMeta
+        if (parsed && typeof parsed.id === 'string' && typeof parsed.senderName === 'string') {
+          replyTo = parsed
+        }
+      } catch {
+        /* 非 JSON，忽略 */
+      }
     }
   }
   return {
@@ -60,7 +76,8 @@ export function msgRowToView(row: MsgRow): MessageView {
     pkRef,
     ts: row.ts,
     seq: row.seq,
-    status: row.status as MessageView['status']
+    status: row.status as MessageView['status'],
+    replyTo
   }
 }
 
@@ -81,8 +98,8 @@ export class MsgRepo {
 
   constructor(db: DatabaseT.Database) {
     this.insertStmt = db.prepare(`
-      INSERT OR IGNORE INTO messages (id, conv_id, sender_id, is_mine, kind, content, file_ref, ts, seq, status)
-      VALUES (@id, @convId, @senderId, @isMine, @kind, @content, @fileRef, @ts, @seq, @status)
+      INSERT OR IGNORE INTO messages (id, conv_id, sender_id, is_mine, kind, content, file_ref, ts, seq, status, reply_to)
+      VALUES (@id, @convId, @senderId, @isMine, @kind, @content, @fileRef, @ts, @seq, @status, @replyTo)
     `)
     this.insertFtsStmt = db.prepare('INSERT INTO messages_fts (msg_id, text) VALUES (?, ?)')
     this.nextSeqStmt = db.prepare('SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM messages')
@@ -124,7 +141,8 @@ export class MsgRepo {
       fileRef: msg.fileRef ?? null,
       ts: msg.ts,
       seq,
-      status: msg.status
+      status: msg.status,
+      replyTo: msg.replyTo ? JSON.stringify(msg.replyTo) : null
     })
     if (info.changes === 0) return false
     const tokens = msg.kind === 'system' ? '' : toFtsTokens(msg.content)

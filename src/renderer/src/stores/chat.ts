@@ -6,6 +6,7 @@ import type {
   MessageView,
   NudgeEvent,
   NudgeResult,
+  ReplyMeta,
   TableTextMeta
 } from '../../../shared/ipc'
 import type { PkGame } from '../../../shared/pk'
@@ -382,12 +383,14 @@ export const useChatStore = defineStore('chat', {
       return this.prependEarlierMessages(convId, earlier)
     },
 
-    async send(text: string, mentions: string[] = []): Promise<boolean> {
+    async send(text: string, mentions: string[] = [], replyTo?: ReplyMeta): Promise<boolean> {
       const conv = this.activeConv
       if (!conv) return false
+      // 防止 IPC 传递数据时，无法被结构化克隆（Structured Clone）的对象
+      replyTo = JSON.parse(JSON.stringify(replyTo ?? {}))
       const view =
         conv.type === 'group'
-          ? await window.pantry.sendGroupText(conv.peerId, text, mentions)
+          ? await window.pantry.sendGroupText(conv.peerId, text, mentions, replyTo)
           : await window.pantry.sendText(conv.peerId, text)
       return this.pushOwn(view)
     },

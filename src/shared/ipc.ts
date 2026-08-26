@@ -272,6 +272,18 @@ export interface MessageView {
   status: 'sending' | 'sent' | 'queued' | 'failed' | 'canceled' | 'recalled'
   /** 入站群消息是否 @ 到本机；用于本次事件的加强提醒 */
   mentioned?: boolean
+  /** 本条消息引用的源消息（仅群聊文本消息携带） */
+  replyTo?: ReplyMeta
+}
+
+/** 被引用消息的元数据：发送者展示名 + 首行文本摘要 */
+export interface ReplyMeta {
+  /** 源消息 id；接收方可用于查找原文或定位跳转 */
+  id: string
+  /** 源消息发送者显示名（备注优先，其次昵称） */
+  senderName: string
+  /** 源消息文本；超长时截断并追加省略号 */
+  text: string
 }
 
 /** 传输状态视图（文件卡片的数据源） */
@@ -853,7 +865,7 @@ export interface PantryApi {
   leaveGroup(groupId: string): Promise<void>
   getGroup(groupId: string): Promise<GroupView | null>
   listGroups(): Promise<GroupView[]>
-  sendGroupText(groupId: string, text: string, mentions?: string[]): Promise<MessageView | null>
+  sendGroupText(groupId: string, text: string, mentions?: string[], replyTo?: ReplyMeta): Promise<MessageView | null>
   /** 触发截图（等价全局快捷键） */
   startCapture(): Promise<void>
   /** 截图窗：桌面位图已解码并完成首帧布局 */

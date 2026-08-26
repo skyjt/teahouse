@@ -26,6 +26,7 @@ import {
   type PantryApi,
   type PeerView,
   type ProfileSubmit,
+  type ReplyMeta,
   type ProfileAvatarChoice,
   type SearchResult,
   type ScanProgressView,
@@ -228,8 +229,15 @@ const api: PantryApi = {
   getGroup: (groupId: string): Promise<GroupView | null> =>
     ipcRenderer.invoke(IpcChannels.groupGet, groupId),
   listGroups: (): Promise<GroupView[]> => ipcRenderer.invoke(IpcChannels.groupList),
-  sendGroupText: (groupId: string, text: string, mentions?: string[]): Promise<MessageView | null> =>
-    ipcRenderer.invoke(IpcChannels.groupSend, groupId, text, mentions),
+  sendGroupText: (groupId: string, text: string, mentions?: string[], replyTo?: ReplyMeta): Promise<MessageView | null> =>
+    // 剥离 Vue/Pinia 响应式代理：结构化克隆无法克隆 Proxy，会抛 "An object could not be cloned"
+    ipcRenderer.invoke(
+      IpcChannels.groupSend,
+      groupId,
+      text,
+      mentions ? JSON.parse(JSON.stringify(mentions)) : mentions,
+      replyTo ? JSON.parse(JSON.stringify(replyTo)) : replyTo
+    ),
   startCapture: (): Promise<void> => ipcRenderer.invoke(IpcChannels.captureStart),
   captureReady: (): Promise<void> => ipcRenderer.invoke(IpcChannels.captureReady),
   captureDone: (bytes: ArrayBuffer, send: boolean): Promise<void> =>

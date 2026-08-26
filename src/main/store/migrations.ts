@@ -194,6 +194,11 @@ export const MIGRATIONS: ReadonlyArray<string> = [
     mode       TEXT NOT NULL,              -- 'off' | 'read' | 'write'
     updated_ts INTEGER NOT NULL
   );
+  `,
+
+  // v15：群聊引用回复（群消息可选携带被引用消息 id）
+  `
+  ALTER TABLE messages ADD COLUMN reply_to TEXT;
   `
 ]
 
