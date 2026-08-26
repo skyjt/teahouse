@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { darkTheme, dateZhCN, NButton, NConfigProvider, NInput, zhCN } from 'naive-ui'
-import type { AppInfo, ScanProgressView, SettingsView } from '../../shared/ipc'
+import type {
+  AppInfo,
+  CaptureFailureNotice,
+  ScanProgressView,
+  SettingsView
+} from '../../shared/ipc'
 import { usePeersStore } from './stores/peers'
 import { useChatStore } from './stores/chat'
 import { useUpdateStore } from './stores/update'
@@ -119,7 +124,9 @@ let stopSettings: (() => void) | null = null
 let stopSettingsWindowState: (() => void) | null = null
 let stopCabinetOpen: (() => void) | null = null
 let stopScanProgress: (() => void) | null = null
+let stopCaptureFailed: (() => void) | null = null
 let scanProgressHideTimer: ReturnType<typeof setTimeout> | null = null
+let captureNoticeTimer: ReturnType<typeof setTimeout> | null = null
 let railHintTimer: ReturnType<typeof setTimeout> | null = null
 let railFocusReleaseTimer: ReturnType<typeof setTimeout> | null = null
 let pendingRailHint: string | null = null
@@ -135,6 +142,7 @@ const scanProgress = ref<ScanProgressView>({
   finishedAt: 0
 })
 const scanProgressVisible = ref(false)
+const captureNotice = ref<CaptureFailureNotice | null>(null)
 // 环形进度显示值：刷新前归零（环隐藏时瞬间）、扫描中随 scanPercent 平滑增长（决议 #163）
 const scanRingPct = ref(0)
 const hasScanRanges = computed(() => (settings.value?.scanRanges.length ?? 0) > 0)
@@ -198,6 +206,21 @@ function onVisibilityChange(): void {
 function clearScanProgressHideTimer(): void {
   if (scanProgressHideTimer) clearTimeout(scanProgressHideTimer)
   scanProgressHideTimer = null
+}
+
+function showCaptureFailure(notice: CaptureFailureNotice): void {
+  captureNotice.value = notice
+  if (captureNoticeTimer) clearTimeout(captureNoticeTimer)
+  captureNoticeTimer = setTimeout(() => {
+    captureNotice.value = null
+    captureNoticeTimer = null
+  }, 7000)
+}
+
+function dismissCaptureFailure(): void {
+  captureNotice.value = null
+  if (captureNoticeTimer) clearTimeout(captureNoticeTimer)
+  captureNoticeTimer = null
 }
 
 function clearRailHintTimer(): void {
@@ -325,6 +348,7 @@ onMounted(async () => {
     applyWindowTitle(next)
   })
   stopScanProgress = window.pantry.onScanProgress(applyScanProgress)
+  stopCaptureFailed = window.pantry.onCaptureFailed(showCaptureFailure)
   document.addEventListener('keydown', onScanConfirmKeydown)
   releaseInitialRailFocus()
 })
@@ -336,6 +360,8 @@ onUnmounted(() => {
   stopSettingsWindowState?.()
   stopCabinetOpen?.()
   stopScanProgress?.()
+  stopCaptureFailed?.()
+  dismissCaptureFailure()
   clearScanProgressHideTimer()
   hideRailHint()
   clearRailFocusReleaseTimer()
@@ -629,6 +655,18 @@ onUnmounted(() => {
       撤回 {{ chatStore.pendingRemoval.secondsLeft }}s
     </button>
   </div>
+  <Transition name="capture-toast">
+    <div
+      v-if="captureNotice"
+      class="capture-toast"
+      role="status"
+      aria-live="assertive"
+    >
+      <PantryIcon name="warning" :size="18" />
+      <span>{{ captureNotice.message }}</span>
+      <button type="button" aria-label="关闭截图提示" @click="dismissCaptureFailure">×</button>
+    </div>
+  </Transition>
   </NConfigProvider>
 </template>
 
@@ -1120,6 +1158,67 @@ onUnmounted(() => {
   }
   .rail-btn:active:not(.is-disabled) {
     transform: none;
+  }
+}
+
+.capture-toast {
+  position: fixed;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(620px, calc(100% - 48px));
+  padding: 11px 12px 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--material-strong);
+  color: var(--text-1);
+  box-shadow: var(--highlight-edge), var(--shadow-float);
+  backdrop-filter: blur(20px) saturate(135%);
+  -webkit-backdrop-filter: blur(20px) saturate(135%);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.capture-toast > svg {
+  flex: 0 0 auto;
+  color: var(--danger);
+}
+.capture-toast > span {
+  min-width: 0;
+  flex: 1;
+}
+.capture-toast > button {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.capture-toast > button:hover {
+  background: var(--surface-hover);
+  color: var(--text-1);
+}
+.capture-toast-enter-active,
+.capture-toast-leave-active {
+  transition: opacity 160ms ease, transform 180ms ease;
+}
+.capture-toast-enter-from,
+.capture-toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -8px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .capture-toast-enter-active,
+  .capture-toast-leave-active {
+    transition: none;
   }
 }
 

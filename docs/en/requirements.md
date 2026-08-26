@@ -4,8 +4,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.51.1; Neiwangtong compatibility remains paused by decision #199 |
-| Updated | 2026-08-10 |
+| Status | Current for v0.51.2; Neiwangtong compatibility remains paused by decision #199 |
+| Updated | 2026-08-26 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
 ## 1. Product goals
@@ -123,7 +123,7 @@ The v0.51.1 localization applies to repository and release documentation. Applic
 
 ### 6.4 Capture, desktop, and settings
 
-- Region capture supports multi-display work areas, annotation tools, copy/send, and Wayland fallback guidance.
+- Region capture supports multi-display work areas, annotation tools, and copy/send. On Wayland it enables the PipeWire portal and attempts real source capture instead of rejecting the session up front. Empty sources, empty images, and capture errors restore the main window and produce visible in-app feedback; hidden shortcut invocations use a system notification when available. Every failure offers system capture plus chat-box `Ctrl+V` as a fallback. Before capture, hiding the main window waits for the hide signal and compositor settling, then verifies that the window is no longer visible.
 - Tray state, unread attention, native notifications, startup, close behavior, and global shortcuts work across the platform matrix.
 - Notifications suppress message bodies in logs and honor user settings, conversation mute, current visibility/focus, and mention rules.
 - Settings cover identity, organization, avatar, directories, receive behavior, notifications, startup, theme, font size, send key, shortcuts, ports, backup/import, and About.
@@ -153,6 +153,7 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 | Decision | Context | Outcome |
 |---|---|---|
 | #285 | Publish maintainable English README, user/developer guides, and current design documentation | Keep established Chinese paths canonical; add English counterparts and bidirectional navigation; validate document coverage and links in CI; use bilingual GitHub Release headings; ship as v0.51.1. Application UI language remains unchanged. |
+| #286 | Kylin and UOS/Huawei systems can ignore capture clicks or retain the main window in screenshots (#29 / #31) | Enable Electron 22's PipeWire capturer on Wayland but still probe `desktopCapturer`; wait for the hide signal and compositor settling, verify invisibility, and surface every empty-source/image/error outcome in-app or through a system notification with a system-capture + `Ctrl+V` fallback. Ship as v0.51.2 without protocol, database, dependency, or network changes. |
 
 ## 9. Open items
 

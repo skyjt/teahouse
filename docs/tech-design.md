@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| 状态 | v1.61；文件柜为主窗第三个页签；中英文文档同步校验（决议 #283/#284/#285）；v0.51.1 |
-| 日期 | 2026-08-10 |
+| 状态 | v1.62；Linux / Wayland 截图兼容修复（决议 #286）；v0.51.2 |
+| 日期 | 2026-08-26 |
 | 关系 | 上游：[requirements.md](requirements.md)（功能）、[protocol.md](protocol.md)（协议）、[ui-design.md](ui-design.md)（界面）；硬约束：根 README「开发红线」（Electron 22.3.27 / Chrome 108 / Node 16.17 焊死） |
 
 ## 1. 选型决策总表
@@ -301,7 +301,7 @@ media/avatars/...   # 本机、联系人或群引用的受管 192×192 WebP 头�
 | macOS 26 跑 Chromium 108 | 已知风险项（README FAQ）：输入法、通知权限、屏幕录制授权列入发布冒烟清单 |
 | Win7 终端为统一 VM（虚拟显卡弱/驱动旧）；UOS/Debian 多国产 GPU 或旧驱动 | **Win7 与 Linux 默认禁用硬件加速走软渲染**（决议 #55）——VM 虚拟显卡与国产 GPU 驱动是 Electron 花屏/GPU 进程报错的头号惯犯，2D 聊天界面软渲染完全流畅；macOS 默认开启，高级设置留开关 |
 | Win7 搜狗输入法候选窗固定在应用左上角 | Chromium 108 在 Win7 恒走 IMM32。#253 的 TSF 开关、#255 的主进程 `show()` 自愈、#256 的 textarea blur/focus、#257 的 `webContents.focus()` 与 #258 的 composition 几何脉冲均经源码复核或 Win7 搜狗真机实测撤销。交叉测试确认同一 WebContents 的全局搜索、独立设置输入和同机 Chrome 正常，故障范围已收敛到聊天自定义多行编辑器。#259 的静态正常流基础 textarea 已在 Win7 搜狗真机验证候选窗定位正常；#261 只恢复 `PantryEmojiBlank` 后候选窗立即再次失位，单变量确认空白 WebFont 参与真实编辑排版是触发项，Win7 永久禁用该字体。#262 将 Win7 聊天输入改为微软雅黑系统字体 contenteditable，表情使用 `contenteditable=false` 的 `1.3em` 本地 Twemoji 原子节点直接参与 DOM 排版，原生 caret 落在节点前后；文本值与 DOM Selection 以 UTF-16 偏移双向映射，composition 期间不重建 DOM。其他平台继续使用 textarea + 空白字体镜像。#257 的 renderer CSS zoom 清理与主进程 `webContents.setZoomFactor()` 保留；Win7 真机需验证候选窗定位、连续 emoji、emoji 后继续中文组词、多行滚动和粘贴 |
-| Wayland 无法全局截图 | 启动检测 `XDG_SESSION_TYPE`，Wayland 下截图按钮降级提示"用系统截图后 Ctrl+V" |
+| Wayland/国产桌面截图差异 | 启动时由 `XDG_SESSION_TYPE`（缺失时回退 `WAYLAND_DISPLAY`）识别 Wayland，并为 Electron 22 合并启用 `WebRTCPipeWireCapturer`；截图按钮仍实际调用 `desktopCapturer`，不再按会话类型提前返回。抓屏前等待主窗口 `hide` 信号和合成器退场并复核不可见；空源、空图、异常统一恢复窗口并通过应用内提示或系统通知给出系统截图 + `Ctrl+V` 退路 |
 | UDP 广播被交换机/AP 隔离 | 协议已有三板斧兜底（手动 IP/扫描/gossip）；FAQ 文档化引导 IT 放行 |
 | 内网通兼容模式与主协议混线、`2425/UDP` 被占、GBK 编解码差异、文件 / 图片能力误判 | 兼容模式放在 `net/compat/` 独立 socket、独立 codec、独立配置与联系人投影；默认关闭，用户显式填写 IP 段后才扫描；端口冲突只关闭兼容模式并给设置页状态；GBK 解码使用精确锁纯 JS 依赖，无法识别的字段保留原始安全摘要；文件 / 图片只按 IPMSG 附件实验处理，未完成 TCP 拉取闭环前 UI 不展示普通发送入口；PK、窗口震动、群聊、媒体撤回等主协议能力由 `ConversationCapabilities` 隐藏 |
 | 超大文件/超大图片打爆内存 | 文件收发全程流式：首次拉取时发送端边读边写 TCP 并同步计算 SHA-256，接收端 pull 流直写磁盘，内存中永不持有整文件；图片解码限制单图 ≤50MP |
@@ -529,3 +529,4 @@ media/avatars/...   # 本机、联系人或群引用的受管 192×192 WebP 头�
 - 2026-07-26 v1.59 决议 #283：文件柜提为一等入口。新增 `main/windows/cabinet-window.ts`（1000×680 / 最小 860×560、单例、**可缩放且非模态**——要能与主窗并排，故不复用设置窗的 modal + scrim 路径）与 `#/cabinet` 渲染入口 `CabinetApp.vue`；新增 `ui:open-cabinet`（可带 peerId 定位）与 `share:recent-uploads`（读既有 `transfers` 的 `purpose='share-put'` 入站完成记录汇总，不新增表列）两个 IPC。`SettingsApp` 移除「我的文件柜」整组（共享目录 / 默认档 / 按人例外的 5 个 `share:*` IPC 调用点整体搬到 `CabinetApp`），`App.vue` 导航栏底部工具组新增 cabinet 按钮，`FileCabinetPanel` 按同一套样式重画并新增「在文件柜窗口打开」。**协议 v0.50、SQLite v14、`services/share.ts`、`net/`、依赖清单一律未动**，纯前台入口与界面重组。版本 **0.49.5 → 0.50.0**。
 - 2026-07-27 v1.60 决议 #284：文件柜由独立窗口改为主窗第三个页签。删除 `windows/cabinet-window.ts` 与 `#/cabinet` 渲染入口（回到四入口契约，决议 #210），界面拆为 `components/CabinetList.vue`（列表栏）+ `components/CabinetPane.vue`（内容区），共享状态收进 `stores/cabinet.ts`；`ui:open-cabinet` 改为「`showMainWindow()` + 向主窗发 `cabinet:focus-peer`」。**不用 App 内动态 import 来省闭包**——那会让 Rollup 把 App 的 facade 并进匿名共享块、manifest 丢掉 `src/App.vue` 动态入口，四入口门禁随之失效；改为把 `App.vue` 的静态闭包预算由 640/96 KiB 抬到 800/116 KiB（NSelect 等表单控件随文件柜进主窗），公共启动闭包仍为 80 KiB 未受影响。协议 v0.50、SQLite v14、`services/share.ts` 与依赖不变，版本 **0.50.0 → 0.51.0**。
 - 2026-08-10 v1.61 决议 #285：新增英文 README、贡献/开发/第三方说明及 `docs/en/` 当前规范，`scripts/check-doc-locales.mjs` 校验文档对与双向链接，Release 说明增加双语标题和下载指引；同时修正公开开发指南的 OCR 选型漂移为 PaddleOCR PP-OCRv6 tiny + onnxruntime-web。运行时架构、协议 v0.50、SQLite v14、IPC、依赖与网络保持，版本 **0.51.0 → 0.51.1**。
+- 2026-08-26 v1.62 决议 #286：Wayland 会话启动时合并启用 `WebRTCPipeWireCapturer`，但截图仍以 `desktopCapturer` 实际能力为准，不再按会话类型提前返回；主窗口隐藏抽为等待 `hide` 信号、合成器退场与最终可见性复核。新增 `capture:failed` main→renderer 事件，空源、空图和异常走应用内提示或系统通知。协议 v0.50、SQLite v14、依赖与网络保持，版本 **0.51.1 → 0.51.2**。
