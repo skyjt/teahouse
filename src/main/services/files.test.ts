@@ -553,10 +553,13 @@ describe('FilesService 群聊媒体', () => {
     expect(msgRepo.get(view!.id)?.status).toBe('sent')
   })
 
-  it('群聊图片不超过 10MB 时按图片 offer 投递', async () => {
+  it.each([
+    ['图片', 'image', '群图片.png', 'image', '[图片]'],
+    ['表情', 'sticker', '群表情.webp', 'sticker', '[表情]']
+  ] as const)('群聊%s按 %s offer 投递', async (_label, want, name, kind, text) => {
     const dir = mkdtempSync(join(tmpdir(), 'pantry-files-service-'))
     tmpDirs.push(dir)
-    const filePath = join(dir, '群图片.png')
+    const filePath = join(dir, name)
     writeFileSync(filePath, 'small image')
 
     const messenger = new FakeMessenger()
@@ -590,13 +593,14 @@ describe('FilesService 群聊媒体', () => {
       bindAddress: '127.0.0.1'
     })
 
-    const view = await service.offerGroupPaths('group-1', [filePath], 'image')
-    expect(view?.kind).toBe('image')
+    const view = await service.offerGroupPaths('group-1', [filePath], want)
+    expect(view?.kind).toBe(kind)
+    expect(view?.text).toBe(text)
 
     await waitTick()
     expect(messenger.sent[0].env.payload).toMatchObject({
       op: 'offer',
-      purpose: 'image',
+      purpose: want,
       groupId: 'group-1'
     })
     expect((messenger.sent[0].env.payload as FileCtlOffer).expiresAt).toBeUndefined()

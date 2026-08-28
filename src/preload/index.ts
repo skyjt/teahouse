@@ -102,6 +102,8 @@ const api: PantryApi = {
   pickFiles: (directory: boolean): Promise<string[] | null> =>
     ipcRenderer.invoke(IpcChannels.filePick, directory),
   pickImages: (): Promise<string[] | null> => ipcRenderer.invoke(IpcChannels.imgPick),
+  pickStickerImages: (): Promise<string[] | null> =>
+    ipcRenderer.invoke(IpcChannels.imgPick, 'sticker'),
   grantFilePaths: (paths: string[]): Promise<string[]> =>
     ipcRenderer.invoke(IpcChannels.fileGrantPaths, paths),
   offerFiles: (peerNodeId: string, paths: string[]): Promise<MessageView | null> =>
@@ -249,14 +251,16 @@ const api: PantryApi = {
     ipcRenderer.invoke(IpcChannels.clipboardReadImage),
   fetchStickerSource: (transferId: string): Promise<ImageSourceBytes | null> =>
     ipcRenderer.invoke(IpcChannels.stickerFetchSource, transferId),
+  fetchStickerImportSource: (path: string): Promise<ImageSourceBytes | null> =>
+    ipcRenderer.invoke(IpcChannels.stickerImportSource, path),
   addSticker: (bytes: ArrayBuffer, ext: string, w: number, h: number): Promise<StickerView | null> =>
     ipcRenderer.invoke(IpcChannels.stickerAdd, bytes, ext, w, h),
   listStickers: (): Promise<StickerView[]> => ipcRenderer.invoke(IpcChannels.stickerList),
   removeSticker: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.stickerRemove, id),
   reorderStickers: (ids: string[]): Promise<StickerView[]> =>
     ipcRenderer.invoke(IpcChannels.stickerReorder, ids),
-  sendSticker: (peerNodeId: string, stickerId: string): Promise<MessageView | null> =>
-    ipcRenderer.invoke(IpcChannels.stickerSend, peerNodeId, stickerId),
+  sendSticker: (targetId: string, stickerId: string, isGroup: boolean): Promise<MessageView | null> =>
+    ipcRenderer.invoke(IpcChannels.stickerSend, targetId, stickerId, isGroup),
   onPeersUpdated: (listener) => subscribe<PeerView[]>(IpcEvents.peersUpdated, listener),
   onUpdateAvailable: (listener) =>
     subscribe<UpdateAvailability | null>(IpcEvents.updateAvailable, listener),

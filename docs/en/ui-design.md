@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.76 for v0.51.2 |
+| Current design | v1.77 for v0.52.0 |
 | Main-window model | Three columns with Chat, Contacts, and File Cabinet tabs |
 | Authority | [ui-design.md](../ui-design.md) is the canonical UI and interaction record |
 
@@ -104,7 +104,7 @@ The right side contains conversation options. A group member count opens an over
 - Images load bounded thumbnails near the viewport and open a validated original in Image Viewer.
 - File cards show name, size, state, expiry, progress, and relevant receive/save/direct/cancel/resume actions.
 - System rows remain low-emphasis and support the explicit cabinet-upload open-directory action.
-- Emoji and stickers use local assets and lazy asynchronous decoding.
+- Emoji and stickers use local assets and lazy asynchronous decoding. The sticker tab offers a native multi-image import action, keeps square rows non-overlapping with vertical overflow, and enables sending in group conversations when at least one other member is online.
 - Game bubbles reveal results only after local animation; notifications, list summaries, and search do not expose a hidden result early.
 - Right-click menus provide context-appropriate copy, forward, recall, save, sticker, and other actions. Recall stays one row with a right-aligned monospaced countdown/reason; danger color intensifies during the final ten seconds.
 
@@ -234,3 +234,4 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 
 - **2026-08-10, v1.75, decision #285:** added the maintained English current-state UI and interaction reference plus bidirectional language navigation. Product UI language and runtime behavior remain unchanged. Repository version 0.51.0 → 0.51.1.
 - **2026-08-26, v1.76, decision #286:** made capture startup failures visible through a dismissible, accessible in-app status or a system notification when the app was already hidden; Linux capture now waits for window hiding and compositor settling to avoid including the app. Repository version 0.51.1 → 0.51.2.
+- **2026-08-27, v1.77, decision #287:** added an accessible sticker-import action with progress/result feedback, sized four-column sticker rows to their square items inside the fixed 200px scrolling region, and enabled saved stickers in groups when another member is online. Repository version 0.51.2 → 0.52.0.

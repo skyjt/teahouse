@@ -44,6 +44,7 @@ import {
   type GroupPatch,
   type ImageOcrResult,
   type ImageOcrSource,
+  type ImageSourceBytes,
   type MessageView,
   type NetState,
   type NudgeEvent,
@@ -234,7 +235,7 @@ if (!gotLock) {
     })
 
   const netState: NetState = { ok: false, udpPort, error: '' }
-  const OCR_SOURCE_MAX_BYTES = 25 * 1024 * 1024
+  const IMAGE_SOURCE_MAX_BYTES = 25 * 1024 * 1024
   const GLOBAL_SCAN_HOST_DELAY = 8
   const GLOBAL_SCAN_PROGRESS_PUSH_INTERVAL = 200
   const IMAGE_EXTS = new Set<string>(IMAGE_FILE_EXTENSIONS)
@@ -242,6 +243,7 @@ if (!gotLock) {
   const IMAGE_SEND_MAX_BYTES = 20 * 1024 * 1024
   const imageOcrCache = new ImageOcrResultCache()
   const rendererPathGrants = new PathGrantStore()
+  const stickerImportPathGrants = new PathGrantStore()
   const updateRequestGate = new UpdateRequestGate()
   const shareDownloadGate = new ShareDownloadGate()
   /** 本机发出的 list / get 在等应答（决议 #275）：reqId → 决议函数，超时由发起方自行清理 */
@@ -535,6 +537,24 @@ if (!gotLock) {
       width: metadata.width,
       height: metadata.height,
       animated: metadata.animated
+    }
+  }
+
+  async function readStickerSource(path: string): Promise<ImageSourceBytes | null> {
+    try {
+      const buf = await readFile(path)
+      if (buf.length === 0 || buf.length > IMAGE_SOURCE_MAX_BYTES) return null
+      const metadata = imagePreview.isInlineNamedBytes(path, buf)
+      if (!metadata) return null
+      return {
+        bytes: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+        ext: extname(path).toLowerCase() || '.png',
+        width: metadata.width,
+        height: metadata.height,
+        animated: metadata.animated
+      }
+    } catch {
+      return null
     }
   }
 
@@ -2278,17 +2298,19 @@ if (!gotLock) {
     return result.filePaths
   })
 
-  ipcMain.handle(IpcChannels.imgPick, async (event): Promise<string[] | null> => {
+  ipcMain.handle(IpcChannels.imgPick, async (event, purpose: unknown): Promise<string[] | null> => {
     if (!mainWindow) return null
+    if (purpose !== undefined && purpose !== 'sticker') return null
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: '选择要发送的图片',
+      title: purpose === 'sticker' ? '选择要导入的表情' : '选择要发送的图片',
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: '图片', extensions: IMAGE_PICKER_EXTENSIONS }]
     })
     if (result.canceled || result.filePaths.length === 0) return null
     const paths = filterImagePickerPaths(result.filePaths)
     if (paths.length === 0) return null
-    rendererPathGrants.grant(event.sender.id, paths)
+    const grants = purpose === 'sticker' ? stickerImportPathGrants : rendererPathGrants
+    grants.grant(event.sender.id, paths)
     return paths
   })
 
@@ -2623,10 +2645,10 @@ if (!gotLock) {
     const media = await managedInlineImageView(transferId)
     if (!media) return null
     const { view } = media
-    if (view.totalSize <= 0 || view.totalSize > OCR_SOURCE_MAX_BYTES) return null
+    if (view.totalSize <= 0 || view.totalSize > IMAGE_SOURCE_MAX_BYTES) return null
     try {
       const buf = await readFile(view.savedPath)
-      if (buf.length === 0 || buf.length > OCR_SOURCE_MAX_BYTES) return null
+      if (buf.length === 0 || buf.length > IMAGE_SOURCE_MAX_BYTES) return null
       if (!imagePreview.isInlineNamedBytes(view.savedPath, buf)) return null
       const bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
       return { name: view.name, size: buf.length, bytes }
@@ -2828,23 +2850,14 @@ if (!gotLock) {
     if (typeof transferId !== 'string' || transferId.length > 64) return null
     const media = await managedInlineImageView(transferId)
     if (!media) return null
-    const { view } = media
-    try {
-      const buf = await readFile(view.savedPath)
-      if (buf.length > 25 * 1024 * 1024) return null
-      const metadata = imagePreview.isInlineNamedBytes(view.savedPath, buf)
-      if (!metadata) return null
-      const ext = extname(view.savedPath).toLowerCase() || '.png'
-      return {
-        bytes: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-        ext,
-        width: metadata.width,
-        height: metadata.height,
-        animated: metadata.animated
-      }
-    } catch {
-      return null
-    }
+    return readStickerSource(media.view.savedPath)
+  })
+
+  ipcMain.handle(IpcChannels.stickerImportSource, async (event, pathValue: unknown) => {
+    if (typeof pathValue !== 'string') return null
+    const path = filterImagePickerPaths([pathValue])[0]
+    if (!path || !stickerImportPathGrants.consume(event.sender.id, [path])) return null
+    return readStickerSource(path)
   })
 
   ipcMain.handle(IpcChannels.imgThumbnailHas, async (_event, transferId: unknown): Promise<boolean> => {
@@ -2913,13 +2926,18 @@ if (!gotLock) {
     }))
   })
 
-  ipcMain.handle(IpcChannels.stickerSend, async (_event, peerId: unknown, id: unknown) => {
-    if (typeof peerId !== 'string' || peerId.length === 0 || peerId.length > 64) return null
+  ipcMain.handle(IpcChannels.stickerSend, async (_event, targetId: unknown, id: unknown, isGroup: unknown) => {
+    if (typeof targetId !== 'string' || targetId.length === 0 || targetId.length > 64) return null
     if (typeof id !== 'string' || id.length > 64 || !stickerRepo) return null
+    if (typeof isGroup !== 'boolean') return null
     const row = stickerRepo.get(id)
     if (!row) return null
     if (!isPathInsideAny(row.path, managedStickerRoots())) return null
-    return (await files?.offerPaths(peerId, [row.path], 'sticker')) ?? null
+    return (
+      (await (isGroup
+        ? files?.offerGroupPaths(targetId, [row.path], 'sticker')
+        : files?.offerPaths(targetId, [row.path], 'sticker'))) ?? null
+    )
   })
 
   ipcMain.handle(IpcChannels.searchQuery, (_event, query: unknown) => {

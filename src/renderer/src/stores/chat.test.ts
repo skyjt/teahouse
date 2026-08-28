@@ -72,6 +72,22 @@ describe('chat store 自己发送后的滚动意图', () => {
     expect(store.openScrollRun).toBe(0)
   })
 
+  it('群聊发送收藏表情时携带群目标并追加本地消息', async () => {
+    const sent = { ...msg('sticker-1', 'group:team'), kind: 'sticker' as const, text: '[表情]' }
+    const sendSticker = vi.fn().mockResolvedValue(sent)
+    vi.stubGlobal('window', { pantry: { sendSticker } })
+    const store = useChatStore()
+    store.convs = [conv('group:team')]
+    store.activeConvId = 'group:team'
+    store.messages['group:team'] = []
+
+    await expect(store.sendSticker('saved-1')).resolves.toBe(true)
+
+    expect(sendSticker).toHaveBeenCalledWith('team', 'saved-1', true)
+    expect(store.messages['group:team']).toEqual([sent])
+    expect(store.openScrollMode).toBe('latest')
+  })
+
   it('默认打开群会话时重载最新页并定位到底部', async () => {
     const latest = [msg('latest-1', 'group:team')]
     const pageMessages = vi.fn().mockResolvedValue(latest)

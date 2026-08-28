@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useStickersStore } from '../stores/stickers'
 import { COMPAT_EMOJIS } from '../utils/compat-emoji'
 import CompatEmoji from './CompatEmoji.vue'
@@ -13,8 +13,25 @@ const props = defineProps<{ stickerEnabled: boolean }>()
 
 const tab = ref<'emoji' | 'sticker'>('emoji')
 const stickers = useStickersStore()
+const importLabel = ref('导入')
+let importLabelTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(() => void stickers.init())
+onBeforeUnmount(() => {
+  if (importLabelTimer) clearTimeout(importLabelTimer)
+})
+
+async function importStickers(): Promise<void> {
+  tab.value = 'sticker'
+  const result = await stickers.importFiles()
+  if (!result) return
+  importLabel.value = result.added === 0 ? '导入失败' : result.added < result.selected ? '部分失败' : '已导入'
+  if (importLabelTimer) clearTimeout(importLabelTimer)
+  importLabelTimer = setTimeout(() => {
+    importLabel.value = '导入'
+    importLabelTimer = null
+  }, 2000)
+}
 </script>
 
 <template>
@@ -25,6 +42,15 @@ onMounted(() => void stickers.init())
       </button>
       <button :class="{ on: tab === 'sticker' }" @click="tab = 'sticker'">
         <PantryIcon name="sticker" :size="15" />表情包
+      </button>
+      <button
+        class="import-button"
+        type="button"
+        :disabled="stickers.importing"
+        :aria-label="stickers.importing ? '正在导入表情包' : '导入表情包'"
+        @click="importStickers"
+      >
+        <PantryIcon name="plus" :size="14" />{{ stickers.importing ? '导入中…' : importLabel }}
       </button>
     </div>
 
@@ -57,10 +83,20 @@ onMounted(() => void stickers.init())
           decoding="async"
         />
         <span class="stk-actions" @click.stop>
-          <button :disabled="index === 0" @click="stickers.move(s.id, -1)">
+          <button
+            type="button"
+            aria-label="上移表情"
+            :disabled="index === 0"
+            @click="stickers.move(s.id, -1)"
+          >
             <PantryIcon name="chevron-up" :size="12" />
           </button>
-          <button :disabled="index === stickers.list.length - 1" @click="stickers.move(s.id, 1)">
+          <button
+            type="button"
+            aria-label="下移表情"
+            :disabled="index === stickers.list.length - 1"
+            @click="stickers.move(s.id, 1)"
+          >
             <PantryIcon name="chevron-down" :size="12" />
           </button>
         </span>
@@ -106,6 +142,20 @@ onMounted(() => void stickers.init())
   color: var(--primary);
   font-weight: 600;
 }
+.tabs .import-button {
+  flex: 0 0 auto;
+  min-width: 78px;
+  padding-inline: 9px;
+  border-left: 1px solid var(--line);
+  color: var(--primary);
+}
+.tabs .import-button:hover:not(:disabled) {
+  background: var(--bg-list);
+}
+.tabs .import-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
 .grid {
   height: 200px;
   overflow-y: auto;
@@ -119,6 +169,7 @@ onMounted(() => void stickers.init())
 }
 .sticker-grid {
   grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: max-content;
   gap: 6px;
 }
 .sticker-grid.is-empty {

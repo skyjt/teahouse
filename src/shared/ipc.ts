@@ -91,6 +91,7 @@ export const IpcChannels = {
   clipboardWriteImage: 'clipboard:write-image',
   clipboardReadImage: 'clipboard:read-image',
   stickerFetchSource: 'sticker:fetch-source',
+  stickerImportSource: 'sticker:import-source',
   stickerAdd: 'sticker:add',
   stickerList: 'sticker:list',
   stickerRemove: 'sticker:remove',
@@ -759,6 +760,8 @@ export interface PantryApi {
   pickFiles(directory: boolean): Promise<string[] | null>
   /** 弹图片多选框；仅返回受支持图片路径，取消返回 null。 */
   pickImages(): Promise<string[] | null>
+  /** 弹图片多选框并签发表情导入专用的一次性路径授权。 */
+  pickStickerImages(): Promise<string[] | null>
   /** 授权用户拖拽 / 粘贴产生的本地文件路径用于一次发送。 */
   grantFilePaths(paths: string[]): Promise<string[]>
   /** 发起文件传输（对方离线直接失败，不入队——决议 #4）；返回本地文件消息 */
@@ -891,13 +894,15 @@ export interface PantryApi {
   readImageFromClipboard(): Promise<ArrayBuffer | null>
   /** 读取通过像素门禁的原始字节与元数据（缩略图 / 复制 / 收藏使用）。 */
   fetchStickerSource(transferId: string): Promise<ImageSourceBytes | null>
+  /** 读取刚由用户选择且持有一次性授权的本地表情源图。 */
+  fetchStickerImportSource(path: string): Promise<ImageSourceBytes | null>
   /** 保存收藏（bytes 已经渲染层压缩）；返回新表情 */
   addSticker(bytes: ArrayBuffer, ext: string, w: number, h: number): Promise<StickerView | null>
   listStickers(): Promise<StickerView[]>
   removeSticker(id: string): Promise<void>
   reorderStickers(ids: string[]): Promise<StickerView[]>
-  /** 发送收藏的表情到某节点 */
-  sendSticker(peerNodeId: string, stickerId: string): Promise<MessageView | null>
+  /** 发送收藏的表情到单聊节点或群聊。 */
+  sendSticker(targetId: string, stickerId: string, isGroup: boolean): Promise<MessageView | null>
   /** 订阅通讯录变化；返回退订函数 */
   onPeersUpdated(listener: (peers: PeerView[]) => void): () => void
   onMsgNew(listener: (msg: MessageView) => void): () => void

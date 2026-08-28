@@ -43,7 +43,7 @@ Profiles carried by `entry`, `alive`, and `profile` include:
   "team": "Desktop",
   "avatar": 3,
   "profileRev": 7,
-  "ver": "0.51.2",
+  "ver": "0.52.0",
   "host": "alex-pc",
   "platform": "win",
   "tcpPort": 17879,
@@ -307,3 +307,4 @@ Per-peer list rate is five requests per ten seconds. Requests time out after eig
 ## 11. Change record
 
 - **2026-08-26, decision #286:** the Linux/Wayland capture fix adds only local desktop capability probing and main-to-renderer feedback. Wire protocol v0.50, capabilities, transfer sequencing, and compatibility behavior remain unchanged. Repository version 0.51.1 → 0.51.2.
+- **2026-08-27, decision #287:** local sticker import and grid sizing do not affect the wire. Group stickers reuse the existing `file-ctl offer` fields `purpose:"sticker"`, `groupId/groupRev`, and per-online-member transfer behavior; no field, capability, or port was added. Wire protocol remains v0.50. Repository version 0.51.2 → 0.52.0.

@@ -4,7 +4,7 @@
 
 This is the English current-state handoff for developers and coding agents. Read it together with the [Contributing guide](../../CONTRIBUTING.en.md) and any local automation policy included in your development checkout. The Chinese handoff keeps the complete chronological release notes; `git log` remains authoritative for current implementation history.
 
-Last updated: 2026-08-26 for **v0.51.2** (decision #286, Linux/Wayland capture compatibility). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
+Last updated: 2026-08-27 for **v0.52.0** (decision #287, Issue #30 sticker improvements). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
 
 ## 0. Reading order
 
@@ -20,8 +20,8 @@ Last updated: 2026-08-26 for **v0.51.2** (decision #286, Linux/Wayland capture c
 
 | Area | State |
 |---|---|
-| Version | 0.51.2 Linux/Wayland capture fix |
-| Branch/release base | `main`, previous release tag `v0.51.1` |
+| Version | 0.52.0 sticker import, grid, and group-send improvements |
+| Branch/release base | `main`, previous release tag `v0.51.2` |
 | Core messaging | Private/group text, images, files, stickers, recall, forwarding, mentions, nudge, PK, offline retry |
 | Discovery | Same-subnet broadcast, manual IP/CIDR, gossip, scan-range sharing, confirmed global refresh |
 | Storage | SQLite WAL, append-only migrations, local history/search/transfers/settings |
@@ -32,7 +32,7 @@ Last updated: 2026-08-26 for **v0.51.2** (decision #286, Linux/Wayland capture c
 | Neiwangtong compatibility | Design only; implementation paused by #199 |
 | Peer updater | Discovery/request/hidden package transfer foundation exists; package creation/apply/restart UX remains incomplete |
 
-The most recent product change before this documentation release was decision #284: File Cabinet moved from a separate window into the main window's third tab. `CabinetList.vue` and `CabinetPane.vue` occupy the existing list/content columns; state lives in `stores/cabinet.ts`. `ui:open-cabinet` shows the main window and focuses the tab/optional peer. Protocol v0.50, SQLite v14, `services/share.ts`, and the transfer data plane did not change in that move.
+Decision #287 resolves Issue #30: the sticker panel imports multiple local images through a dedicated one-time path grant, reuses the existing WebP/GIF collection pipeline, keeps square grid rows non-overlapping with vertical overflow, and enables saved stickers in groups through the existing online-member media path. Protocol v0.50 and SQLite v14 remain unchanged.
 
 Decision #286 fixes Linux capture startup: Wayland merge-enables Electron 22's PipeWire capturer but still probes actual sources, Linux waits for the main-window hide signal and compositor settling, and all empty-source/image/error paths provide visible in-app or system-notification fallback guidance. The protocol remains v0.50 and SQLite remains v14; reported Kylin/UOS target machines still require final hands-on validation.
 

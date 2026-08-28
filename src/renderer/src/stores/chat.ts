@@ -456,11 +456,11 @@ export const useChatStore = defineStore('chat', {
       return this.pushOwn(view)
     },
 
-    /** 发送收藏的表情包（仅单聊，传输与图片同通道） */
+    /** 发送收藏的表情包（单聊 / 群聊均复用图片传输通道） */
     async sendSticker(stickerId: string): Promise<boolean> {
       const conv = this.activeConv
-      if (!conv || conv.type === 'group') return false
-      const view = await window.pantry.sendSticker(conv.peerId, stickerId)
+      if (!conv) return false
+      const view = await window.pantry.sendSticker(conv.peerId, stickerId, conv.type === 'group')
       return this.pushOwn(view)
     },
 

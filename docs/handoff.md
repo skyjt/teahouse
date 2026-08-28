@@ -68,18 +68,19 @@
 > 当前补充：2026-07-27（**v0.51.0，决议 #283/#284 文件柜成为主窗第三个页签**）：文件共享从设置窗第三组提到导航栏底部工具组；#283 首版做成独立窗口，用户要求「不要新弹窗」后由 #284 改为**主界面内的第三个页签**——列表栏放我的柜子摘要与同事列表，内容区放文件浏览器 / 我的柜子管理页（含「最近有人放进来」汇总）。浏览手感对齐系统文件管理器（单击选中、双击进目录、多选与键盘、列表与网格双视图），私聊内 320px 面板保留并同步重画。协议、库表与 `services/share.ts` 零改动。
 > 当前补充：2026-08-10（**v0.51.1，决议 #285 中英文文档体系**）：根 README、贡献/开发/第三方说明与设计文档均已有英文当前规范和双向语言入口；`docs/README.md` 统一导航，`npm run check:docs` 校验文档覆盖与链接，GitHub Release 说明增加双语标题与下载指引。中文既有路径继续作为主事实源，应用界面语言、协议 v0.50、SQLite v14、IPC、依赖与网络保持。
 > 当前补充：2026-08-26（**v0.51.2，决议 #286 Linux / Wayland 截图兼容**）：Issue #29/#31 的 Wayland 提前返回已移除，Electron 22 启用 PipeWire capturer 后仍实际探测屏幕源；Linux 隐藏主窗口等待 `hide` 信号和合成器退场并复核不可见；空源、空图和异常通过应用内提示或系统通知给出系统截图 + `Ctrl+V` 退路。协议 v0.50、SQLite v14、依赖与网络保持，需在报告所列 Kylin/UOS 真机完成最终验收。
+> 当前补充：2026-08-27（**v0.52.0，决议 #287 Issue #30 表情包改进**）：表情面板支持系统图片多选导入并复用既有压缩收藏管线；四列网格按正方形实际高度生成行，固定内容区溢出滚动；群聊表情复用在线成员群媒体传输。协议 v0.50、SQLite v14、依赖与端口保持。
 
 ## 0. 必读顺序（15 分钟上手）
 
 1. **[AGENTS.md](../AGENTS.md)** —— 9 条硬性红线（Electron 22.3.27 焊死、纯内网、分层铁律等），违反即错误；
 2. 本文 —— 状态、工作流、下一步；
-3. 设计四件套（按需细读）：[requirements.md](requirements.md)（功能与决议，已至 #286）→ [protocol.md](protocol.md)（主协议 v0.50）→ [ui-design.md](ui-design.md)（界面）→ [tech-design.md](tech-design.md)（选型/分层/库表）；英文当前规范从 [docs/en/README.md](en/README.md) 进入；内网通兼容专项见 [nwt-compat-design.md](nwt-compat-design.md)（**决议 #199：暂缓实现，仅设计待办**）；
+3. 设计四件套（按需细读）：[requirements.md](requirements.md)（功能与决议，已至 #287）→ [protocol.md](protocol.md)（主协议 v0.50）→ [ui-design.md](ui-design.md)（界面）→ [tech-design.md](tech-design.md)（选型/分层/库表）；英文当前规范从 [docs/en/README.md](en/README.md) 进入；内网通兼容专项见 [nwt-compat-design.md](nwt-compat-design.md)（**决议 #199：暂缓实现，仅设计待办**）；
 4. `git log --oneline` —— 提交历史就是完整开发史，每条 commit message 都是一份增量说明。
 
 ## 1. 项目状态一览
 
 纯内网、无服务器、基于 IP 的局域网 IM + 文件传输（Electron 22 / Vue 3 / better-sqlite3）。
-**v0.1–v0.4/P1 主链路已完成，当前代码版本 v0.51.2**。**内网通兼容：仅设计落档，代码未写，决议 #199 暂缓、不排近期**（对照 tech-design §12）。Windows / Debian / UOS 真实打包运行测试留给目标平台执行：
+**v0.1–v0.4/P1 主链路已完成，当前代码版本 v0.52.0**。**内网通兼容：仅设计落档，代码未写，决议 #199 暂缓、不排近期**（对照 tech-design §12）。Windows / Debian / UOS 真实打包运行测试留给目标平台执行：
 
 | 已交付 | 说明 |
 |---|---|
@@ -165,7 +166,7 @@ renderer/  main.ts 公共 bootstrap；renderer-entry.ts 按 hash 动态加载 Ap
 ## 5. 已知遗留 / TODO（非阻塞）
 
 - 系统 UI 图标仍为项目内自绘 SVG；头像模板和内置 emoji 子集使用 Twemoji 本地 SVG 子集（`src/renderer/src/assets/twemoji/`），输入框编辑态通过 textarea 镜像层显示同套 SVG，emoji 占位宽度由 `utils/emoji-metrics` 的隐藏 DOM 探针按输入框实际字体逐字符测量（canvas measureText 对 emoji 与 DOM 排版不一致，不可用；探针挂 `<html>` 下避开 body zoom），协议/复制仍保留 UTF-8 emoji 字符。后续若扩展 emoji 子集，必须同步 `compat-emoji` 映射、Twemoji SVG 文件、输入框镜像渲染覆盖和 CC-BY 4.0 署名，不引入运行时远程资源。
-- 群聊图片/文件已支持：发送端按在线成员逐个点对点 transfer，离线成员不入文件队列；群聊图片单图 ≤10MB 走图片消息，超过 10MB 退化为普通文件卡片并由接收端手动接收；表情包面板群内直发仍暂不开放（转发本地媒体可复用群媒体通道）。
+- 群聊图片/文件/表情已支持：发送端按在线成员逐个点对点 transfer，离线成员不入文件队列；群聊图片单图 ≤10MB 走图片消息，超过 10MB 退化为普通文件卡片并由接收端手动接收；收藏表情复用既有 `purpose:"sticker"` 自动接收路径。
 - 群消息不做按成员送达回执（本端入库即 sent），明细 P2。
 - 设置页结构已重排为左侧分组 + 右侧面板；高级项仍是打磨：聊天记录存储位置迁移、空间占用/缓存清理、诊断日志导出、快捷键冲突实时检测、清空全部记录双重确认。核心 P1 设置（资料、头像、文件目录、通知、自启、关闭行为、主题、字体、快捷键、端口、导入导出）已可用。
 - npm 11 对 `.npmrc` 自定义键（electron_mirror/runtime 等）打 deprecation 警告——npm 12 需改用环境变量，暂可忽略。
