@@ -71,7 +71,7 @@ try {
   console.log(`[db-selftest] runtime node=${process.versions.node} abi=${process.versions.modules}`)
 
   // 1. 迁移就位
-  assert.equal(db.pragma('user_version', { simple: true }), 14, '迁移版本应为 14')
+  assert.equal(db.pragma('user_version', { simple: true }), 15, '迁移版本应为 15')
   assert.equal(db.pragma('journal_mode', { simple: true }), 'wal', '应为 WAL 模式')
   const messageIndexes = new Set(
     (
@@ -113,7 +113,7 @@ try {
     ''
   )
   applyMigrations(legacyDb)
-  assert.equal(legacyDb.pragma('user_version', { simple: true }), 14, 'v10 数据库应迁移至 v14')
+  assert.equal(legacyDb.pragma('user_version', { simple: true }), 15, 'v10 数据库应迁移至 v15')
   const migratedGroup = new GroupRepo(legacyDb).get('g-v10')
   assert.equal(migratedGroup?.ownerId, 'node-creator', '旧群优先以仍在群内的创建者作为群主')
   assert.deepEqual(migratedGroup?.adminIds, [], '旧群管理员默认应为空')
@@ -123,7 +123,7 @@ try {
   for (let index = 0; index < 11; index += 1) legacyV11.exec(MIGRATIONS[index])
   legacyV11.pragma('user_version = 11')
   applyMigrations(legacyV11)
-  assert.equal(legacyV11.pragma('user_version', { simple: true }), 14, 'v11 数据库应迁移至 v14')
+  assert.equal(legacyV11.pragma('user_version', { simple: true }), 15, 'v11 数据库应迁移至 v15')
   const peerColumns = legacyV11.pragma('table_info(peers)') as Array<{ name: string }>
   const groupColumns = legacyV11.pragma('table_info(groups)') as Array<{ name: string }>
   assert.equal(peerColumns.some((column) => column.name === 'avatar_hash'), true)
@@ -139,7 +139,7 @@ try {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run('legacy-transfer', 'legacy-message', 'node-bob', 'out', '{}', 'offering', 0, 10, 1)
   applyMigrations(legacyV12)
-  assert.equal(legacyV12.pragma('user_version', { simple: true }), 14, 'v12 数据库应迁移至 v14')
+  assert.equal(legacyV12.pragma('user_version', { simple: true }), 15, 'v12 数据库应迁移至 v15')
   const legacyTransfer = legacyV12
     .prepare('SELECT expires_at FROM transfers WHERE transfer_id = ?')
     .get('legacy-transfer') as { expires_at: number }
@@ -156,7 +156,7 @@ try {
   for (let index = 0; index < 13; index += 1) legacyV13.exec(MIGRATIONS[index])
   legacyV13.pragma('user_version = 13')
   applyMigrations(legacyV13)
-  assert.equal(legacyV13.pragma('user_version', { simple: true }), 14, 'v13 数据库应迁移至 v14')
+  assert.equal(legacyV13.pragma('user_version', { simple: true }), 15, 'v13 数据库应迁移至 v15')
   const v14Grants = new ShareGrantsRepo(legacyV13)
   assert.equal(v14Grants.list().length, 0, '升级到 v14 不得凭空产生例外')
   legacyV13.close()
