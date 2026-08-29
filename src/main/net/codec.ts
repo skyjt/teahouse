@@ -165,6 +165,12 @@ function validatePayload(type: string, payload: unknown, textLimit = TEXT_UDP_LI
           if (!Array.isArray(m.mentions) || m.mentions.length > GROUP_MAX_MEMBERS) return false
           if (!m.mentions.every((id) => isStr(id, LIMITS.from))) return false
         }
+        // replyTo：只允许携带源消息 ID；拒绝 senderName/text 等不可信字段（决议 #reply）
+        if (m.replyTo !== undefined && !isStr(m.replyTo, LIMITS.id)) return false
+        if (!Object.keys(payload).every((key) =>
+          key === 'kind' || key === 'text' || key === 'groupId' || key === 'groupRev' ||
+          key === 'mentions' || key === 'resend' || key === 'replyTo'
+        )) return false
       }
       return true
     }

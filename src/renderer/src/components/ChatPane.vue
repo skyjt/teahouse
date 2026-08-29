@@ -140,7 +140,42 @@ const historySearchInput = ref<HTMLInputElement | null>(null)
 const inputScrollTop = ref(0)
 const msgMenu = ref<{ x: number; y: number; msg: MessageView } | null>(null)
 const forwardMsg = ref<MessageView | null>(null)
-const replyTo = ref<{ id: string; senderName: string; text: string } | null>(null)
+const replyToId = ref<string | null>(null)
+const replyToMeta = ref({id: '', senderName: '', text: ''})
+
+watch(replyToId,
+    async (newId) => {
+      if (!newId) {
+        replyToMeta.value = {id: '', senderName: '', text: ''}
+      }
+      /** 从当前会话消息列表中按 ID 解析引用展示元数据；查不到时降级为"原消息不可用" */
+      const msg = await chatStore.getMessageById(newId)
+      if (!msg) replyToMeta.value = {id: replyToId.value, senderName: '原消息不可用', text: ''}
+      // 直接读取源消息自身的发送者 ID 和文本；原消息是普通消息时 replyTo 字段为空
+      const senderName = peersStore.nameOf(msg.senderId) || '未知成员'
+      replyToMeta.value = {id: replyToId.value, senderName, text: String(msg.text ?? '')}
+    },
+    {immediate: true}
+)
+
+function convertReplyToMeta(msg: MessageView) {
+  if (!msg.replyTo || !msg.replyTo.id) return msg
+  const replyMsg = chatStore.activeMessages.find((m) => m.id === msg.replyTo.id)
+  if (!replyMsg) return msg
+  let senderName
+  let text = replyMsg.text
+  if (replyMsg.status === 'recalled') {
+    text = '消息已被撤回'
+  } else if (replyMsg.isMine) {
+    senderName = '我'
+  } else {
+    senderName = peersStore.nameOf(replyMsg.senderId) || '未知成员'
+  }
+  msg.replyTo.senderName = senderName
+  msg.replyTo.text = text
+  return msg
+}
+
 const settings = ref<SettingsView | null>(null)
 let stopSettings: (() => void) | null = null
 let stopClipboardPaste: (() => void) | null = null
@@ -436,7 +471,7 @@ watch(
     nudgeFeedback.value = null
     clearTablePasteHint()
     resetHistorySearch()
-    replyTo.value = null
+    replyToId.value = null
     if (isGroup.value && id) void groupsStore.ensure(id)
   },
   { immediate: true }
@@ -960,12 +995,12 @@ async function send(): Promise<void> {
   const mentions = isGroup.value
     ? [...new Set(mentionIds.value)].filter((id) => text.includes(`@${peersStore.nameOf(id)}`))
     : []
-  const replyToMeta = replyTo.value ?? undefined
+  const id = replyToId.value ? replyToId.value : undefined
   draft.value = ''
   mentionIds.value = []
   showMentionPicker.value = false
-  replyTo.value = null
-  await chatStore.send(text, mentions, replyToMeta)
+  replyToId.value = null
+  await chatStore.send(text, mentions, id)
 }
 
 async function sendClipboardImageFallback(event?: Event): Promise<boolean> {
@@ -1225,8 +1260,7 @@ function quoteSelectedMessage(): void {
   const msg = msgMenu.value?.msg
   msgMenu.value = null
   if (!msg || !canQuoteMessage(msg)) return
-  const senderName = isGroup.value ? peersStore.nameOf(msg.senderId) : '未知'
-  replyTo.value = { id: String(msg.id), senderName: String(senderName), text: String(msg.text ?? '') }
+  replyToId.value = String(msg.id)
 }
 
 function messageMenuItemCount(msg: MessageView): number {
@@ -1292,11 +1326,7 @@ function forwardSelectedMessage(): void {
 }
 
 async function jumpToReplyTarget(msgId: string): Promise<void> {
-  const conv = chatStore.activeConv
-  if (!conv) return
-  const msg = chatStore.activeMessages.find((m) => m.id === msgId)
-  if (!msg) return
-  await chatStore.jumpToMessage(conv.id, msg.seq, msg.id)
+  await chatStore.jumpToMessageById(msgId)
 }
 
 function isImagePath(path: string): boolean {
@@ -1850,7 +1880,7 @@ async function onDrop(event: DragEvent): Promise<void> {
       <MessageRow
         v-for="(msg, i) in chatStore.activeMessages"
         :key="msg.id"
-        :msg="msg"
+        :msg="convertReplyToMeta(msg)"
         :prev-ts="i === 0 ? null : chatStore.activeMessages[i - 1].ts"
         :is-group-conv="isGroup"
         :sender-name="senderName(msg)"
@@ -2078,15 +2108,15 @@ async function onDrop(event: DragEvent): Promise<void> {
           <PantryIcon name="x" :size="14" />
         </button>
       </div>
-      <div v-if="replyTo" class="reply-preview">
+      <div v-if="replyToId" class="reply-preview">
         <span class="reply-preview-label">引用回复</span>
-        <span class="reply-preview-sender">{{ replyTo.senderName }}</span>
-        <span class="reply-preview-text">{{ replyTo.text }}</span>
+        <span class="reply-preview-sender">{{ replyToMeta?.senderName ?? '原消息不可用' }}</span>
+        <span class="reply-preview-text">{{ replyToMeta?.text ?? '' }}</span>
         <button
           class="reply-preview-close"
           type="button"
           aria-label="取消引用"
-          @click="replyTo = null"
+          @click="replyToId = null"
         >
           <PantryIcon name="x" :size="12" />
         </button>

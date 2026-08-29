@@ -2,10 +2,10 @@
 
 > [简体中文](tech-design.md) · [English](en/tech-design.md)
 
-| | |
-|---|---|
-| 状态 | v1.63；表情包导入、网格与群聊传输（决议 #287）；v0.52.0 |
-| 日期 | 2026-08-27 |
+| |                                                                                                                                                                                                              |
+|---|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 状态 | v1.64；群聊引用回复（决议 #288）；v0.53.0                                                                                                                                                                    |
+| 日期 | 2026-08-29                                                                                                                                                                                                   |
 | 关系 | 上游：[requirements.md](requirements.md)（功能）、[protocol.md](protocol.md)（协议）、[ui-design.md](ui-design.md)（界面）；硬约束：根 README「开发红线」（Electron 22.3.27 / Chrome 108 / Node 16.17 焊死） |
 
 ## 1. 选型决策总表
@@ -350,6 +350,7 @@ media/avatars/...   # 本机、联系人或群引用的受管 192×192 WebP 头�
 | v0.47 | 共享文件柜（分三步）：①我的文件柜（`config.fileCabinet` + SQLite v14 `share_grants` + 设置页共享目录 / 默认档 / 按人例外 + 共享根禁选校验）②浏览与下载（caps `shr1`、`share` 报文与 codec 白名单、分页快照、`realpath` 越界复核、私聊头部按钮 + 右侧覆盖面板、`purpose:"share-get"` 自动 accept）③上传（`purpose:"share-put"`、写权限复核、落 `root/上传者名/`、私聊系统提示） | shared/protocol、shared/ipc、net/codec（仅加白名单，transfer 不动）、store/migrations + share-grants-repo、services/share、settings、renderer FileCabinetPanel / stores/share / SettingsView |
 | v0.50 → v0.51 | 文件柜一等入口（决议 #283，形态改为主窗第三个页签见 #284）：导航栏 cabinet 按钮切页签 + `stores/cabinet.ts` + `CabinetList`（列表栏：我的柜子摘要 + `shr1` 同事列表）+ `CabinetPane`（内容区：浏览器 / 我的柜子管理页，列表与网格双视图、文件管理器式多选与键盘）+ 设置页「我的文件柜」整组迁出 + `FileCabinetPanel` 同步重画；**协议、库表、services/share 零改动** | main/index（2 个 IPC）、shared/ipc、preload、renderer App.vue / stores/cabinet / CabinetList / CabinetPane / PantryIcon / SettingsApp / FileCabinetPanel |
 | v0.52 | 表情包本地多选导入、四列网格稳定滚动、群聊表情在线成员投递；协议与库表不变 | shared/ipc、main/index、preload、renderer EmojiPanel / stores/stickers / stores/chat、FilesService 既有群媒体路径 |
+| v0.53 | 群聊引用回复（决议 #288）：`group-text` 新增可选 `replyTo` 源消息 ID；codec 入站校验只允许受限非空字符串，拒绝空串与对象；接收侧按 ID 查群会话内源消息生成 `MessageView.replyTo`，本地 `messages.reply_to` 存源 ID 字符串；目标不存在时接收正常、跳转提示由渲染层处理。协议升 v0.51，SQLite v14 不变 | shared/protocol、shared/ipc、net/codec、main/index、main/services/groups、main/store/msg-repo、preload、renderer ChatPane / stores/chat / MessageRow |
 | 待办 · 暂缓 | 内网通兼容模式（#194–#196 设计；**#199 不排期**） | 见 nwt-compat-design.md；勿提前写 net/compat |
 | 待办 · 暂缓 | 内网通实验附件互通（依赖上项 + TCP GETFILEDATA 闭环） | 同上 |
 | v1.0 | 三平台安装包打磨、冒烟全过、文档定稿 | CI/builder |
@@ -532,3 +533,4 @@ media/avatars/...   # 本机、联系人或群引用的受管 192×192 WebP 头�
 - 2026-08-10 v1.61 决议 #285：新增英文 README、贡献/开发/第三方说明及 `docs/en/` 当前规范，`scripts/check-doc-locales.mjs` 校验文档对与双向链接，Release 说明增加双语标题和下载指引；同时修正公开开发指南的 OCR 选型漂移为 PaddleOCR PP-OCRv6 tiny + onnxruntime-web。运行时架构、协议 v0.50、SQLite v14、IPC、依赖与网络保持，版本 **0.51.0 → 0.51.1**。
 - 2026-08-26 v1.62 决议 #286：Wayland 会话启动时合并启用 `WebRTCPipeWireCapturer`，但截图仍以 `desktopCapturer` 实际能力为准，不再按会话类型提前返回；主窗口隐藏抽为等待 `hide` 信号、合成器退场与最终可见性复核。新增 `capture:failed` main→renderer 事件，空源、空图和异常走应用内提示或系统通知。协议 v0.50、SQLite v14、依赖与网络保持，版本 **0.51.1 → 0.51.2**。
 - 2026-08-27 v1.63 决议 #287：表情导入复用现有压缩入库动作，主进程增加独立选择授权与受限源图读取；网格仅增加原生 CSS 隐式行尺寸；群聊发送复用 `FilesService.offerGroupPaths(..., 'sticker')`。协议 v0.50、SQLite v14、依赖与端口保持，版本 **0.51.2 → 0.52.0**。
+- 2026-08-29 v1.64 决议 #288：群聊引用回复。`group-text` 载荷新增可选 `replyTo`（源消息 ID 字符串）；codec 入站只允许受限非空字符串，拒绝空串与含 `senderName/text` 的对象；接收侧在本地群会话内按 ID 查询源消息，生成 `MessageView.replyTo.id/senderName/text`，本地 `messages.reply_to` 列存源 ID；目标消息不存在时接收正常，跳转与不可用提示由渲染层处理。协议升 v0.51，SQLite v14 不变。版本 **0.52.0 → 0.53.0**。

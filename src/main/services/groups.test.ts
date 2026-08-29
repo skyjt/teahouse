@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
 import { MSG_TYPES, type Envelope, type GroupMeta, type GroupPayload } from '../../shared/protocol'
 import type { ConversationView, GroupPatch } from '../../shared/ipc'
-import { makeEnvelope } from '../net/codec'
+import { decode, makeEnvelope } from '../net/codec'
 import type { Messenger, SendOutcome } from '../net/messenger'
 import type { ConvRepo } from '../store/conv-repo'
 import type { GroupRepo } from '../store/group-repo'
@@ -715,13 +715,44 @@ describe('GroupsService PK', () => {
 })
 
 class FakeMsgRepo {
-  inserted: Array<{ id: string; kind: string; content: string; convId: string }> = []
-  insert(m: { id: string; kind: string; content: string; convId: string }): boolean {
+  inserted: Array<{
+    id: string
+    conv_id: string
+    sender_id: string
+    is_mine: number
+    kind: string
+    content: string
+    file_ref: string | null
+    ts: number
+    seq: number
+    status: string
+    reply_to?: string | null
+    // Test-friendly aliases
+    convId?: string
+    replyTo?: string
+  }> = []
+  insert(m: { id: string; kind: string; content: string; convId: string; replyTo?: string }): boolean {
     if (this.inserted.some((x) => x.id === m.id)) return false
-    this.inserted.push(m)
+    const row = {
+      id: m.id,
+      conv_id: m.convId,
+      sender_id: '',
+      is_mine: 0,
+      kind: m.kind,
+      content: m.content,
+      file_ref: null,
+      ts: Date.now(),
+      seq: this.inserted.length + 1,
+      status: 'sent',
+      reply_to: m.replyTo ?? null,
+      // aliases for test assertions
+      convId: m.convId,
+      replyTo: m.replyTo
+    }
+    this.inserted.push(row)
     return true
   }
-  get(id: string): { id: string; kind: string; content: string; convId: string } | undefined {
+  get(id: string) {
     return this.inserted.find((x) => x.id === id)
   }
 }
@@ -886,26 +917,111 @@ describe('GroupsService 群变更系统提示（决议 #87/#241/#242/#243）', (
     ])
   })
 
-  it('发送带引用的群文本消息会记录 replyTo 元数据并广播', () => {
+  it('发送带引用的群文本消息：replyTo 入库存且随报文广播', () => {
     const a = member('node-a', '10.0.0.1', '阿明')
     a.svc.createGroup('茶水间', ['node-b', 'node-c'])!
     const g = a.groupRepo.list()[0]
-    const viewedMsg = { id: 'msg-source', senderId: 'node-b', text: '源消息内容' }
-
-    const events: Array<{ event: string; msg: unknown }> = []
-    a.svc.on('message', (msg) => events.push({ event: 'message', msg }))
-
-    const view = a.svc.sendText(g.groupId, '回复你', [], {
-      id: viewedMsg.id,
-      senderName: 'Bob',
-      text: viewedMsg.text
-    })
-
-    // view 来自 FakeMsgRepo，不经过 msgRowToView，但应该包含基本字段
+    const view = a.svc.sendText(g.groupId, '回复你', [], 'msg-source')
     expect(view).not.toBeNull()
     expect(view!.kind).toBe('text')
     expect(view!.text).toBe('回复你')
-    // FakeMsgRepo 的 get() 返回原始插入对象（不含 msgRowToView 转换），检查事件是否发出
-    expect(events.length).toBeGreaterThanOrEqual(0)
+    // replyTo 写入本地消息行
+    const sentMsg = a.msgRepo.inserted.find((m) => m.id === view!.id)
+    expect(sentMsg).toBeDefined()
+    expect(sentMsg!.replyTo).toBe('msg-source')
+    // 报文载荷携带 replyTo
+    const textSends = a.messenger.sent.filter((s) => s.env.type === MSG_TYPES.msg)
+    expect(textSends.map((s) => s.peerId)).toEqual(['node-b', 'node-c'])
+    for (const s of textSends) {
+      const p = s.env.payload as MsgPayload
+      expect(p.kind).toBe('group-text')
+      expect(p.groupId).toBe(g.groupId)
+      expect(p.replyTo).toBe('msg-source')
+    }
+    // 接收方 view 携带 replyTo id
+    expect(view!.replyTo).toEqual({ id: 'msg-source' })
+  })
+
+  it('入站群文本消息携带 replyTo 时存入本地库并触发 message 事件', () => {
+    const b = member('node-b', '10.0.0.2', '小陈')
+    // 先让 B 认识群
+    const a = member('node-a', '10.0.0.1', '阿明')
+    const g = a.svc.createGroup('茶水间', ['node-b'])!
+    for (const env of groupInfos(a.messenger)) {
+      b.messenger.emit('incoming', env, { address: '10.0.0.1' })
+    }
+    // 模拟 A 发带引用的消息给 B
+    const replyEnv = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-a', {
+      kind: 'group-text',
+      text: '这条是引用',
+      groupId: g.groupId,
+      groupRev: g.rev,
+      replyTo: 'existing-msg-id'
+    })
+    const events: Array<{ event: string; msg: unknown }> = []
+    b.svc.on('message', (msg) => events.push({ event: 'message', msg }))
+    b.messenger.emit('incoming', replyEnv, { address: '10.0.0.1' })
+    expect(events).toHaveLength(1)
+    const received = events[0].msg as { id: string; replyTo?: { id: string }; text: string }
+    expect(received.text).toBe('这条是引用')
+    expect(received.replyTo).toEqual({ id: 'existing-msg-id' })
+    // 入库确认
+    const stored = b.msgRepo.inserted.find((m) => m.id === received.id)
+    expect(stored).toBeDefined()
+    expect(stored!.replyTo).toBe('existing-msg-id')
+  })
+
+  it('空字符串 replyTo 在 codec 层被拒绝，不会入库存', () => {
+    const b = member('node-b', '10.0.0.2')
+    const emptyReply = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-a', {
+      kind: 'group-text',
+      text: '无效引用',
+      groupId: 'g-1',
+      groupRev: 1,
+      replyTo: ''
+    })
+    const decoded = decode(emptyReply)
+    expect(decoded).toMatchObject({ ok: false })
+    // 由于编码层拒绝，B 不会收到任何消息，msgRepo 无插入
+    expect(b.msgRepo.inserted).toHaveLength(0)
+  })
+
+  it('伪造对象 replyTo 在 codec 层被拒绝', () => {
+    const fake = makeEnvelope(MSG_TYPES.msg, 'node-a', {
+      kind: 'group-text',
+      text: '冒充回复',
+      groupId: 'g-1',
+      groupRev: 1,
+      replyTo: { id: 'msg-source', senderName: '管理员', text: '原始消息内容' }
+    })
+    const decoded = decode(fake)
+    expect(decoded).toMatchObject({ ok: false })
+  })
+
+  it('replyTo 指向不存在的消息时接收正常，跳转由渲染层处理', () => {
+    const b = member('node-b', '10.0.0.2', '小陈')
+    const a = member('node-a', '10.0.0.1', '阿明')
+    const g = a.svc.createGroup('茶水间', ['node-b'])!
+    for (const env of groupInfos(a.messenger)) {
+      b.messenger.emit('incoming', env, { address: '10.0.0.1' })
+    }
+    // 引用的目标 ID 在本机仓库中不存在
+    const noTarget = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-a', {
+      kind: 'group-text',
+      text: '引用不存在的消息',
+      groupId: g.groupId,
+      groupRev: g.rev,
+      replyTo: 'nonexistent-msg-id'
+    })
+    const events: Array<{ event: string; msg: unknown }> = []
+    b.svc.on('message', (msg) => events.push({ event: 'message', msg }))
+    b.messenger.emit('incoming', noTarget, { address: '10.0.0.1' })
+    expect(events).toHaveLength(1)
+    const received = events[0].msg as { id: string; replyTo?: { id: string }; text: string }
+    expect(received.text).toBe('引用不存在的消息')
+    expect(received.replyTo).toEqual({ id: 'nonexistent-msg-id' })
+    // 目标 ID 不在 B 的仓库中，但本条消息本身仍入库
+    expect(b.msgRepo.get(received.id)).toBeDefined()
+    expect(b.msgRepo.get('nonexistent-msg-id')).toBeUndefined()
   })
 })

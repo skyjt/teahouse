@@ -140,7 +140,7 @@ function revealSystemTarget(): void {
       </div>
       <div v-if="props.msg.replyTo" class="reply-quote" @click.stop="$emit('reply-to', props.msg.replyTo.id)">
         <span class="reply-quote-label">引用</span>
-        <span class="reply-quote-sender">{{ props.msg.replyTo.senderName }}：</span>
+        <span class="reply-quote-sender" v-if="props.msg.replyTo.senderName">{{ props.msg.replyTo.senderName }}：</span>
         <span class="reply-quote-text">{{ props.msg.replyTo.text }}</span>
       </div>
     </span>

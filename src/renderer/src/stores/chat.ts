@@ -6,7 +6,6 @@ import type {
   MessageView,
   NudgeEvent,
   NudgeResult,
-  ReplyMeta,
   TableTextMeta
 } from '../../../shared/ipc'
 import type { PkGame } from '../../../shared/pk'
@@ -242,6 +241,33 @@ export const useChatStore = defineStore('chat', {
         if (run === navigationRun && this.highlightId === msgId) this.highlightId = null
       }, 2600)
     },
+    async getMessageById(msgId: string): Promise<MessageView> {
+        return await window.pantry.getMessageById(msgId)
+    },
+    async jumpToMessageById(msgId: string): Promise<void> {
+      const info = await this.getMessageById(msgId)
+      if (!info) return
+      const run = ++navigationRun
+      if (info.convId.startsWith('single:')) {
+        const conv = await window.pantry.openConversation(info.convId.slice(7))
+        if (!conv || run !== navigationRun) return
+      } else {
+        await window.pantry.markRead(info.convId)
+        if (run !== navigationRun) return
+      }
+      this.activeConvId = info.convId
+      const ctx = await window.pantry.getMessageContext(info.convId, info.seq)
+      if (run !== navigationRun || this.activeConvId !== info.convId) return
+      this.setConversationMessages(info.convId, ctx)
+      const conv = this.convs.find((c) => c.id === info.convId)
+      const tail = ctx[ctx.length - 1]
+      this.viewingHistory = !(conv && tail && tail.ts >= conv.lastTs)
+      this.highlightId = msgId
+      this.requestConversationScroll('target')
+      setTimeout(() => {
+        if (run === navigationRun && this.highlightId === msgId) this.highlightId = null
+      }, 2600)
+    },
 
     async backToLatest(): Promise<void> {
       const convId = this.activeConvId
@@ -383,11 +409,9 @@ export const useChatStore = defineStore('chat', {
       return this.prependEarlierMessages(convId, earlier)
     },
 
-    async send(text: string, mentions: string[] = [], replyTo?: ReplyMeta): Promise<boolean> {
+    async send(text: string, mentions: string[] = [], replyTo?: string): Promise<boolean> {
       const conv = this.activeConv
       if (!conv) return false
-      // 防止 IPC 传递数据时，无法被结构化克隆（Structured Clone）的对象
-      replyTo = JSON.parse(JSON.stringify(replyTo ?? {}))
       const view =
         conv.type === 'group'
           ? await window.pantry.sendGroupText(conv.peerId, text, mentions, replyTo)

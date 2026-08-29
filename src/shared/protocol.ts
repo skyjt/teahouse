@@ -272,15 +272,8 @@ export type MsgPayload =
       mentions?: string[]
       /** 补发标记：消息保持原 id/ts，落在历史正确位置 */
       resend?: boolean
-      /** 被引用的源消息信息；接收方直接渲染引用块，无需额外查找 */
-      replyTo?: {
-        /** 源消息 id；点击可跳转定位 */
-        id: string
-        /** 源消息发送者显示名（备注优先，其次昵称） */
-        senderName: string
-        /** 源消息文本；超长时截断并追加省略号 */
-        text: string
-      }
+      /** 被引用的源消息 ID；接收端在本地群会话内查询后生成展示内容，原字段不随报文传送 */
+      replyTo?: string
     }
   | {
       kind: 'recall'

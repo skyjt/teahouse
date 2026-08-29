@@ -58,6 +58,7 @@ export const IpcChannels = {
   searchQuery: 'search:query',
   msgSearch: 'msg:search',
   msgContext: 'msg:context',
+  msgGet: 'msg:get',
   settingsSaveApp: 'settings:save-app',
   /** 我的文件柜（决议 #271/#277）：共享根与默认档随 settings:get / settings:updated 下发 */
   shareMySetRoot: 'share:my-set-root',
@@ -283,7 +284,7 @@ export interface MessageView {
 export interface ReplyMeta {
   /** 源消息 id；接收方可用于查找原文或定位跳转 */
   id: string
-  /** 源消息发送者显示名（备注优先，其次昵称） */
+  /** 源消息发送者显示名（备注优先，其次昵称）*/
   senderName: string
   /** 源消息文本；超长时截断并追加省略号 */
   text: string
@@ -819,6 +820,8 @@ export interface PantryApi {
   searchMessages(options: ConversationSearchOptions): Promise<ConversationMessageHit[]>
   /** 搜索跳转：取目标 seq 前后窗口（按时间升序），用于会话内定位 */
   getMessageContext(convId: string, seq: number): Promise<MessageView[]>
+  /** 按消息 ID 查询所在会话与 seq，供 jumpToMessage 跳转使用 */
+  getMessageById(msgId: string): Promise<MessageView | null>
   /** 应用级设置（通知/手动节点/扫描网段） */
   saveAppSettings(patch: AppSettingsPatch): Promise<SettingsView>
   /** 我的文件柜：选共享根（打开目录选择器并校验）；clear=true 表示清除共享根 */
@@ -881,7 +884,7 @@ export interface PantryApi {
   leaveGroup(groupId: string): Promise<void>
   getGroup(groupId: string): Promise<GroupView | null>
   listGroups(): Promise<GroupView[]>
-  sendGroupText(groupId: string, text: string, mentions?: string[], replyTo?: ReplyMeta): Promise<MessageView | null>
+  sendGroupText(groupId: string, text: string, mentions?: string[], replyTo?: string): Promise<MessageView | null>
   /** 触发截图（等价全局快捷键） */
   startCapture(): Promise<void>
   /** 截图窗：桌面位图已解码并完成首帧布局 */

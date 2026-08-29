@@ -2,10 +2,10 @@
 
 > [简体中文](../protocol.md) · **English**
 
-| Field | Value |
-|---|---|
-| Current protocol | v0.50 main protocol, proprietary UTF-8 JSON |
-| Transport | IPv4 UDP control/message plane and TCP data/control fallback |
+| Field | Value                                                               |
+|---|---------------------------------------------------------------------|
+| Current protocol | v0.51 main protocol; group-text replyTo added by decision #288                   |
+| Transport | IPv4 UDP control/message plane and TCP data/control fallback        |
 | Authority | [protocol.md](../protocol.md) is the canonical wire-protocol record |
 
 ## 1. Principles
@@ -166,7 +166,8 @@ Gossip entries contain Node ID, IP, TCP port, and last-seen time. A receiver pro
   "targetId": "uuid",
   "game": "dice",
   "result": 6,
-  "resend": true
+  "resend": true,
+  "replyTo": "uuid"
 }
 ```
 
@@ -177,6 +178,7 @@ Gossip entries contain Node ID, IP, TCP port, and last-seen time. A receiver pro
 - Nudges are private, reliable immediate actions with no offline queue. Each peer pair allows at most two per 60 seconds and at least 15 seconds between accepted actions.
 - PK messages carry the sender-generated immutable dice or rock-paper-scissors result. They are online-only, not queued, and retries reuse the same ID/result.
 - Group mentions contain at most 50 Node IDs and affect notification emphasis without changing recipients.
+- Group-text reply-to (decision #288): senders carry only the source message ID in `replyTo`. Receivers look up the source message in the local group conversation, populate `MessageView.replyTo` with `senderName` (remark preferred, then nick) and a first-line text summary, and store the source ID string in `messages.reply_to`. The codec accepts only bounded non-empty strings; empty strings and objects containing `senderName`/`text` are rejected. If the referenced message does not exist locally, receipt succeeds and the renderer handles the unavailable-target prompt.
 - Images and stickers use one `file-ctl offer` as their sole cross-peer record. `purpose:"image"` or the sticker kind auto-accepts into managed media after local size/type checks.
 - Table images may include at most 4,096 bytes of `tableText` and a `tableTextTruncated` flag when the recipient advertises `tbl1`.
 - Receivers recompute `totalSize` from non-directory file entries and require equality with the declared value.
@@ -308,3 +310,4 @@ Per-peer list rate is five requests per ten seconds. Requests time out after eig
 
 - **2026-08-26, decision #286:** the Linux/Wayland capture fix adds only local desktop capability probing and main-to-renderer feedback. Wire protocol v0.50, capabilities, transfer sequencing, and compatibility behavior remain unchanged. Repository version 0.51.1 → 0.51.2.
 - **2026-08-27, decision #287:** local sticker import and grid sizing do not affect the wire. Group stickers reuse the existing `file-ctl offer` fields `purpose:"sticker"`, `groupId/groupRev`, and per-online-member transfer behavior; no field, capability, or port was added. Wire protocol remains v0.50. Repository version 0.51.2 → 0.52.0.
+- **2026-08-29, decision #288:** group-text reply-to. The `group-text` payload gains an optional `replyTo` source-message-ID string. The codec accepts only bounded non-empty strings and rejects empty strings or objects with `senderName`/`text`. Receivers look up the source ID in the local group conversation, populate `MessageView.replyTo` with sender name and first-line text summary, and store the raw ID in `messages.reply_to`. If the target is absent locally, receipt succeeds and the renderer handles the unavailable-target prompt. Protocol advances to v0.51; SQLite remains v14. Repository version 0.52.0 → **0.53.0**.

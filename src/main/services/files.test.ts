@@ -107,7 +107,8 @@ class FakeMsgRepo {
       file_ref: msg.fileRef ?? null,
       ts: msg.ts,
       seq: this.rows.size + 1,
-      status: msg.status
+      status: msg.status,
+      reply_to: msg.replyTo
     })
     return true
   }

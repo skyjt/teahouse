@@ -171,6 +171,8 @@ const api: PantryApi = {
     ipcRenderer.invoke(IpcChannels.msgSearch, options),
   getMessageContext: (convId: string, seq: number): Promise<MessageView[]> =>
     ipcRenderer.invoke(IpcChannels.msgContext, convId, seq),
+  getMessageById: (msgId: string): Promise<{ convId: string; seq: number } | null> =>
+    ipcRenderer.invoke(IpcChannels.msgGet, msgId),
   saveAppSettings: (patch: AppSettingsPatch): Promise<SettingsView> =>
     ipcRenderer.invoke(IpcChannels.settingsSaveApp, patch),
   setShareRoot: (clear?: boolean): Promise<ShareRootPickResult> =>
@@ -232,14 +234,14 @@ const api: PantryApi = {
   getGroup: (groupId: string): Promise<GroupView | null> =>
     ipcRenderer.invoke(IpcChannels.groupGet, groupId),
   listGroups: (): Promise<GroupView[]> => ipcRenderer.invoke(IpcChannels.groupList),
-  sendGroupText: (groupId: string, text: string, mentions?: string[], replyTo?: ReplyMeta): Promise<MessageView | null> =>
+  sendGroupText: (groupId: string, text: string, mentions?: string[], replyTo?: string): Promise<MessageView | null> =>
     // 剥离 Vue/Pinia 响应式代理：结构化克隆无法克隆 Proxy，会抛 "An object could not be cloned"
     ipcRenderer.invoke(
       IpcChannels.groupSend,
       groupId,
       text,
       mentions ? JSON.parse(JSON.stringify(mentions)) : mentions,
-      replyTo ? JSON.parse(JSON.stringify(replyTo)) : replyTo
+      replyTo
     ),
   startCapture: (): Promise<void> => ipcRenderer.invoke(IpcChannels.captureStart),
   captureReady: (): Promise<void> => ipcRenderer.invoke(IpcChannels.captureReady),

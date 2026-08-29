@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.52.0 sticker import, grid, and group-send behavior; Neiwangtong compatibility remains paused by decision #199 |
+| Status | Current for v0.53.0 group-text reply-to; sticker import completed in v0.52.0; Neiwangtong compatibility remains paused by decision #199 |
 | Updated | 2026-08-27 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
@@ -105,7 +105,7 @@ The v0.51.1 localization applies to repository and release documentation. Applic
 - **Export and migration:** export readable HTML/TXT and a `.pantry-bak` migration archive. Import maps the previous local identity to the current Node ID and merges by message ID.
 - **Recall:** allow the sender to recall eligible text, group text, game, image, and unfinished file messages within five minutes. Completed files remain on disk. Group-file recall is available only while every recipient transfer is unfinished.
 - **Emoji and stickers:** render a local Twemoji subset on legacy platforms while preserving UTF-8 characters on the wire and clipboard. Stickers can be collected from chat images or imported through the native multi-image picker, retain the existing static/GIF size controls, and can be sent in private or group conversations. Group stickers follow group-image delivery and reach only currently online members.
-- **Forwarding and mentions:** forward supported content through a global modal and support mentions in groups. Quoted replies remain P2.
+- **Forwarding and mentions:** forward supported content through a global modal and support mentions in groups. **Quoted replies** (decision #288, v0.53): tapping a message in a group conversation attaches its source message ID (`replyTo`) to the next send; the codec rejects empty strings and objects with `senderName`/`text`. Receivers look up the source ID in the local group conversation, populate `MessageView.replyTo` with sender name and first-line text summary, and render a quoted-context bar above the bubble; clicking jumps to the source message's conversation. If the target is absent locally, receipt succeeds and the renderer shows an unavailable-target hint.
 - **Nudge:** private chats can send a reliable, rate-limited window nudge. It is never queued for a later offline delivery.
 - **PK games:** rock-paper-scissors and dice use delayed reveal semantics defined by the current protocol and UI documents.
 
@@ -155,6 +155,7 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 | #285 | Publish maintainable English README, user/developer guides, and current design documentation | Keep established Chinese paths canonical; add English counterparts and bidirectional navigation; validate document coverage and links in CI; use bilingual GitHub Release headings; ship as v0.51.1. Application UI language remains unchanged. |
 | #286 | Kylin and UOS/Huawei systems can ignore capture clicks or retain the main window in screenshots (#29 / #31) | Enable Electron 22's PipeWire capturer on Wayland but still probe `desktopCapturer`; wait for the hide signal and compositor settling, verify invisibility, and surface every empty-source/image/error outcome in-app or through a system notification with a system-capture + `Ctrl+V` fallback. Ship as v0.51.2 without protocol, database, dependency, or network changes. |
 | #287 | Issue #30: stickers require a chat-image workaround, multi-row grids overlap, and saved stickers cannot be sent to groups | Add native multi-image import with a separate window-scoped one-time path grant, reuse the existing WebP/GIF collection pipeline, size implicit grid rows to their square items with vertical overflow, and route group stickers through the existing online-member `purpose:"sticker"` media path. Ship as v0.52.0 without protocol, database, dependency, or port changes. |
+| #288 | Implement group-text quoted replies | Add optional `replyTo` source-message-ID to the `group-text` payload. The codec accepts only bounded non-empty strings and rejects empty strings and objects with `senderName`/`text`. Senders carry only the ID; receivers look up the source in the local group conversation, populate `MessageView.replyTo`, and store the raw ID in `messages.reply_to`. Missing targets are handled gracefully by the renderer. Advance protocol to v0.51, keep SQLite v14. Ship as v0.53.0. |
 
 ## 9. Open items
 

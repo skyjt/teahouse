@@ -4,7 +4,7 @@
 
 This is the English current-state handoff for developers and coding agents. Read it together with the [Contributing guide](../../CONTRIBUTING.en.md) and any local automation policy included in your development checkout. The Chinese handoff keeps the complete chronological release notes; `git log` remains authoritative for current implementation history.
 
-Last updated: 2026-08-27 for **v0.52.0** (decision #287, Issue #30 sticker improvements). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
+Last updated: 2026-08-29 for **v0.53.0** (decision #288, group-text reply-to). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
 
 ## 0. Reading order
 
@@ -33,6 +33,8 @@ Last updated: 2026-08-27 for **v0.52.0** (decision #287, Issue #30 sticker impro
 | Peer updater | Discovery/request/hidden package transfer foundation exists; package creation/apply/restart UX remains incomplete |
 
 Decision #287 resolves Issue #30: the sticker panel imports multiple local images through a dedicated one-time path grant, reuses the existing WebP/GIF collection pipeline, keeps square grid rows non-overlapping with vertical overflow, and enables saved stickers in groups through the existing online-member media path. Protocol v0.50 and SQLite v14 remain unchanged.
+
+Decision #288 implements group-text quoted replies. The `group-text` payload gains an optional `replyTo` source-message-ID string. The codec accepts only bounded non-empty strings and rejects empty strings or objects with `senderName`/`text`. Senders carry only the ID; receivers look up the source in the local group conversation, populate `MessageView.replyTo` with sender name and first-line text summary, and render a quoted-context bar above the bubble. If the target is absent locally, receipt succeeds and the renderer shows an unavailable-target hint. Protocol advances to v0.51; SQLite remains v14. Repository version 0.52.0 → **0.53.0**.
 
 Decision #286 fixes Linux capture startup: Wayland merge-enables Electron 22's PipeWire capturer but still probes actual sources, Linux waits for the main-window hide signal and compositor settling, and all empty-source/image/error paths provide visible in-app or system-notification fallback guidance. The protocol remains v0.50 and SQLite remains v14; reported Kylin/UOS target machines still require final hands-on validation.
 

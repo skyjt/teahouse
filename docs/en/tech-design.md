@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.63 for v0.52.0 |
+| Current design | v1.64 for v0.53.0 |
 | Runtime baseline | Electron 22.3.27 / Node 16.17 / Chrome 108 |
 | Upstream | [Requirements](requirements.md), [Protocol](protocol.md), and [UI design](ui-design.md) |
 | Authority | [tech-design.md](../tech-design.md) is the canonical technical design record |
@@ -255,6 +255,7 @@ Network integration binds `127.0.0.1` and uses empty broadcast targets. It must 
 | v0.51.1 | Maintained English documentation, locale validation, bilingual release headings |
 | v0.51.2 | Capability-first Wayland capture, verified main-window hiding, visible failure feedback |
 | v0.52.0 | Native multi-image sticker import, stable scrolling grid, group sticker delivery to online members |
+| v0.53.0 | Group-text reply-to (decision #288): optional `replyTo` source message ID on `group-text`; codec rejects empty strings and objects; receiver looks up source in local group conversation to populate `MessageView.replyTo`; stores raw ID in `messages.reply_to`; missing target is handled gracefully by the renderer. Protocol v0.51, SQLite v14 unchanged |
 | Paused | Neiwangtong compatibility and experimental attachment interoperability |
 | v1.0 work | Target-platform polish, updater completion, release documentation |
 
@@ -263,3 +264,4 @@ Network integration binds `127.0.0.1` and uses empty broadcast targets. It must 
 - **2026-08-10, v1.61, decision #285:** introduced the maintained English technical reference, document-pair validation, and bilingual release headings; corrected the public development guide to the actual PaddleOCR/onnxruntime-web stack. Runtime architecture, protocol, database, and dependencies are unchanged. Repository version 0.51.0 → 0.51.1.
 - **2026-08-26, v1.62, decision #286:** merge-enabled Electron 22's `WebRTCPipeWireCapturer` for Wayland while retaining capability probing through `desktopCapturer`; extracted hide-signal/compositor settling with a final visibility check; and added a main-to-renderer `capture:failed` path plus system-notification fallback. Protocol v0.50, SQLite v14, dependencies, and network behavior are unchanged. Repository version 0.51.1 → 0.51.2.
 - **2026-08-27, v1.63, decision #287:** reused the existing sticker compression/store action for a separately authorized native multi-image picker, fixed the grid with native implicit-row sizing, and routed group stickers through the existing `offerGroupPaths(..., 'sticker')` path. Protocol v0.50, SQLite v14, dependencies, and ports are unchanged. Repository version 0.51.2 → 0.52.0.
+- **2026-08-29, v1.64, decision #288:** group-text reply-to. The `group-text` payload gains an optional `replyTo` source-message-ID string. The codec accepts only bounded non-empty strings and rejects empty strings or objects with `senderName`/`text`. Receivers look up the source ID in the local group conversation, populate `MessageView.replyTo` with sender name and first-line text summary, and store the raw ID in `messages.reply_to`. If the target is absent locally, receipt succeeds and the renderer handles the unavailable-target prompt. Protocol advances to v0.51; SQLite remains v14. Repository version 0.52.0 → **0.53.0**.

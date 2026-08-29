@@ -214,6 +214,37 @@ describe('codec', () => {
     expect(decode(encode(badId))).toEqual({ ok: false, reason: 'bad-payload:msg' })
   })
 
+  it('group-text replyTo 只允许 id 字段，拒绝 senderName/text 等不可信字段', () => {
+    const ok = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-aaaa', {
+      kind: 'group-text',
+      text: '回复你',
+      groupId: 'group-1',
+      groupRev: 1,
+      replyTo: 'msg-source'
+    })
+    expect(decode(encode(ok))).toMatchObject({ ok: true, known: true })
+
+    // 带 senderName / text 的伪造报文应被拒绝（决议 #reply）
+    const fake = makeEnvelope(MSG_TYPES.msg, 'node-aaaa', {
+      kind: 'group-text',
+      text: '冒充回复',
+      groupId: 'group-1',
+      groupRev: 1,
+      replyTo: { id: 'msg-source', senderName: '管理员', text: '原始消息内容' }
+    })
+    expect(decode(encode(fake))).toEqual({ ok: false, reason: 'bad-payload:msg' })
+
+    // replyTo 为空字符串
+    const emptyId = makeEnvelope(MSG_TYPES.msg, 'node-aaaa', {
+      kind: 'group-text',
+      text: 'hi',
+      groupId: 'group-1',
+      groupRev: 1,
+      replyTo: ''
+    })
+    expect(decode(encode(emptyId))).toEqual({ ok: false, reason: 'bad-payload:msg' })
+  })
+
   it('recall 消息要求 targetId，群聊撤回要求 groupRev 配套', () => {
     const ok = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-aaaa', {
       kind: 'recall',

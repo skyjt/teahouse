@@ -207,7 +207,7 @@ export class GroupsService extends EventEmitter {
 
   // ---------- 群消息 ----------
 
-  sendText(groupId: string, text: string, mentions: string[] = [], replyTo?: { id: string; senderName: string; text: string }): MessageView | null {
+  sendText(groupId: string, text: string, mentions: string[] = [], replyTo?: string): MessageView | null {
     const meta = this.deps.groupRepo.get(groupId)
     const trimmed = text.trim()
     if (!meta || !meta.members.includes(this.deps.selfId) || !trimmed) return null
@@ -223,7 +223,7 @@ export class GroupsService extends EventEmitter {
       groupId,
       groupRev: meta.rev,
       ...(cleanMentions.length > 0 ? { mentions: cleanMentions } : {}),
-      ...(replyTo ? { replyTo } : {})
+      replyTo: replyTo ? replyTo : ''
     })
     // 群消息不做按成员回执（v0.3 简化）：本端入库即 sent，离线成员由补发队列保送达
     this.deps.msgRepo.insert({
@@ -235,7 +235,7 @@ export class GroupsService extends EventEmitter {
       content: trimmed,
       ts: env.ts,
       status: 'sent',
-      replyTo
+      replyTo: replyTo
     })
     this.deps.convRepo.bump(convId, env.ts)
     this.emitConvs()

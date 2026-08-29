@@ -29,7 +29,7 @@ export interface NewMessage {
   ts: number
   status: 'sending' | 'sent' | 'queued' | 'failed' | 'canceled' | 'recalled'
   /** 引用的源消息元数据（senderName + text），仅群聊文本消息可携带；存入 reply_to JSON */
-  replyTo?: ReplyMeta
+  replyTo?: string
 }
 
 /** 行 → 渲染层视图（chat 与 files 服务共用） */
@@ -46,18 +46,9 @@ export function msgRowToView(row: MsgRow): MessageView {
       fileRef = undefined
     }
   }
-  if (row.reply_to) {
-    if (row.reply_to.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(row.reply_to) as ReplyMeta
-        if (parsed && typeof parsed.id === 'string' && typeof parsed.senderName === 'string') {
-          replyTo = parsed
-        }
-      } catch {
-        /* 非 JSON，忽略 */
-      }
+    if (row.reply_to) {
+        replyTo = {id: row.reply_to}
     }
-  }
   return {
     id: row.id,
     convId: row.conv_id,
@@ -142,7 +133,7 @@ export class MsgRepo {
       ts: msg.ts,
       seq,
       status: msg.status,
-      replyTo: msg.replyTo ? JSON.stringify(msg.replyTo) : null
+      replyTo: msg.replyTo
     })
     if (info.changes === 0) return false
     const tokens = msg.kind === 'system' ? '' : toFtsTokens(msg.content)
