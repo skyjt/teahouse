@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import type { DataExportOptions, DataImportResult, ExportFormat } from '../../shared/ipc'
-import { GROUP_MAX_MEMBERS, isAvatarHash } from '../../shared/protocol'
+import { GROUP_MAX_MEMBERS, LIMITS, isAvatarHash } from '../../shared/protocol'
 import { parsePkRef, pkResultText, pkTitle } from '../../shared/pk'
 import { toFtsTokens } from '../store/fts'
 import { isPathInsideAny } from '../util/path-policy'
@@ -85,6 +85,8 @@ interface GroupDump {
   avatarHash?: string
   adminSecretHash?: string
   adminHint?: string
+  description?: string
+  announce?: string
 }
 
 interface StickerDump {
@@ -120,6 +122,7 @@ interface FilesBlob {
 interface ImportStatements {
   peerUpsert: DatabaseT.Statement
   groupUpsert: DatabaseT.Statement
+  groupGet: DatabaseT.Statement
   convUpsert: DatabaseT.Statement
   transferInsert: DatabaseT.Statement
   stickerInsert: DatabaseT.Statement
@@ -296,8 +299,8 @@ export class PorterService {
                 updated_ts AS updatedTs, creator_ip AS creatorIp,
                 creator_id AS creatorId,
                 owner_id AS ownerId, admin_ids AS adminIds, avatar_hash AS avatarHash,
-                admin_secret_hash AS adminSecretHash,
-                admin_hint AS adminHint
+                admin_secret_hash AS adminSecretHash, admin_hint AS adminHint,
+                description, announce
          FROM groups ORDER BY updated_ts ASC`
       )
       .all() as Array<Omit<GroupDump, 'members' | 'adminIds'> & { members: string; adminIds: string }>
@@ -312,7 +315,15 @@ export class PorterService {
         ownerId,
         adminIds: [...new Set(parseStringArray(row.adminIds))].filter(
           (id) => id !== ownerId && members.includes(id)
-        )
+        ),
+        description:
+          typeof row.description === 'string'
+            ? row.description.trim().slice(0, LIMITS.groupDescription)
+            : '',
+        announce:
+          typeof row.announce === 'string'
+            ? row.announce.trim().slice(0, LIMITS.groupAnnounce)
+            : ''
       }
     })
   }
@@ -388,9 +399,10 @@ export class PorterService {
       groupUpsert: this.db.prepare(
         `INSERT INTO groups (
            group_id, name, members, rev, updated_by, updated_ts,
-           creator_ip, creator_id, owner_id, admin_ids, avatar_hash, admin_secret_hash, admin_hint
+           creator_ip, creator_id, owner_id, admin_ids, avatar_hash, admin_secret_hash, admin_hint,
+           description, announce
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(group_id) DO UPDATE SET
            name = CASE
              WHEN excluded.rev > groups.rev OR (excluded.rev = groups.rev AND excluded.updated_ts >= groups.updated_ts)
@@ -423,8 +435,15 @@ export class PorterService {
              THEN excluded.admin_secret_hash ELSE groups.admin_secret_hash END,
            admin_hint = CASE
              WHEN excluded.rev > groups.rev OR (excluded.rev = groups.rev AND excluded.updated_ts >= groups.updated_ts)
-             THEN excluded.admin_hint ELSE groups.admin_hint END`
+             THEN excluded.admin_hint ELSE groups.admin_hint END,
+           description = CASE
+             WHEN excluded.rev > groups.rev OR (excluded.rev = groups.rev AND excluded.updated_ts >= groups.updated_ts)
+             THEN excluded.description ELSE groups.description END,
+           announce = CASE
+             WHEN excluded.rev > groups.rev OR (excluded.rev = groups.rev AND excluded.updated_ts >= groups.updated_ts)
+             THEN excluded.announce ELSE groups.announce END`
       ),
+      groupGet: this.db.prepare('SELECT description, announce FROM groups WHERE group_id = ?'),
       convUpsert: this.db.prepare(
         `INSERT INTO conversations (id, type, peer_or_group_id, last_ts, pinned, muted, mentioned)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -479,6 +498,21 @@ export class PorterService {
       typeof group.adminSecretHash === 'string' ? group.adminSecretHash.slice(0, 64) : ''
     const adminHint =
       adminSecretHash && typeof group.adminHint === 'string' ? group.adminHint.slice(0, 40) : ''
+    const local = statements.groupGet.get(group.groupId) as
+      | { description?: unknown; announce?: unknown }
+      | undefined
+    const description =
+      typeof group.description === 'string'
+        ? group.description.trim().slice(0, LIMITS.groupDescription)
+        : typeof local?.description === 'string'
+          ? local.description.trim().slice(0, LIMITS.groupDescription)
+          : ''
+    const announce =
+      typeof group.announce === 'string'
+        ? group.announce.trim().slice(0, LIMITS.groupAnnounce)
+        : typeof local?.announce === 'string'
+          ? local.announce.trim().slice(0, LIMITS.groupAnnounce)
+          : ''
     statements.groupUpsert.run(
       group.groupId,
       group.name.slice(0, 64),
@@ -492,7 +526,9 @@ export class PorterService {
       JSON.stringify(adminIds),
       isAvatarHash(group.avatarHash) ? group.avatarHash : '',
       adminSecretHash,
-      adminHint
+      adminHint,
+      description,
+      announce
     )
   }
 

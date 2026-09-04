@@ -230,6 +230,10 @@ function validatePayload(type: string, payload: unknown, textLimit = TEXT_UDP_LI
       ) {
         return false
       }
+      // v0.54 新字段对旧端保持向前兼容：字段缺省交给服务层按本地值补齐；
+      // 显式提供时仍必须是合法字符串，空串用于清空。
+      if (meta.description !== undefined && !isStrAllowEmpty(meta.description, LIMITS.groupDescription)) return false
+      if (meta.announce !== undefined && !isStrAllowEmpty(meta.announce, LIMITS.groupAnnounce)) return false
       return true
     }
     case MSG_TYPES.avatar: {

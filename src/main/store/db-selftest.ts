@@ -24,7 +24,8 @@ import { SearchService } from '../services/search'
 import { PorterService } from '../services/porter'
 import { PeerRegistry } from '../net/peer-registry'
 import type { PeerRecord } from '../net/peer-registry'
-import { writeStoreZip } from '../util/zip-store'
+import { LIMITS } from '../../shared/protocol'
+import { readZip, writeStoreZip } from '../util/zip-store'
 
 function makePeer(name: string, rev = 1): PeerRecord {
   return {
@@ -71,7 +72,7 @@ try {
   console.log(`[db-selftest] runtime node=${process.versions.node} abi=${process.versions.modules}`)
 
   // 1. 迁移就位
-  assert.equal(db.pragma('user_version', { simple: true }), 15, '迁移版本应为 15')
+  assert.equal(db.pragma('user_version', { simple: true }), 16, '迁移版本应为 16')
   assert.equal(db.pragma('journal_mode', { simple: true }), 'wal', '应为 WAL 模式')
   const messageIndexes = new Set(
     (
@@ -113,7 +114,7 @@ try {
     ''
   )
   applyMigrations(legacyDb)
-  assert.equal(legacyDb.pragma('user_version', { simple: true }), 15, 'v10 数据库应迁移至 v15')
+  assert.equal(legacyDb.pragma('user_version', { simple: true }), 16, 'v10 数据库应迁移至 v16')
   const migratedGroup = new GroupRepo(legacyDb).get('g-v10')
   assert.equal(migratedGroup?.ownerId, 'node-creator', '旧群优先以仍在群内的创建者作为群主')
   assert.deepEqual(migratedGroup?.adminIds, [], '旧群管理员默认应为空')
@@ -123,7 +124,7 @@ try {
   for (let index = 0; index < 11; index += 1) legacyV11.exec(MIGRATIONS[index])
   legacyV11.pragma('user_version = 11')
   applyMigrations(legacyV11)
-  assert.equal(legacyV11.pragma('user_version', { simple: true }), 15, 'v11 数据库应迁移至 v15')
+  assert.equal(legacyV11.pragma('user_version', { simple: true }), 16, 'v11 数据库应迁移至 v16')
   const peerColumns = legacyV11.pragma('table_info(peers)') as Array<{ name: string }>
   const groupColumns = legacyV11.pragma('table_info(groups)') as Array<{ name: string }>
   assert.equal(peerColumns.some((column) => column.name === 'avatar_hash'), true)
@@ -139,7 +140,7 @@ try {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run('legacy-transfer', 'legacy-message', 'node-bob', 'out', '{}', 'offering', 0, 10, 1)
   applyMigrations(legacyV12)
-  assert.equal(legacyV12.pragma('user_version', { simple: true }), 15, 'v12 数据库应迁移至 v15')
+  assert.equal(legacyV12.pragma('user_version', { simple: true }), 16, 'v12 数据库应迁移至 v16')
   const legacyTransfer = legacyV12
     .prepare('SELECT expires_at FROM transfers WHERE transfer_id = ?')
     .get('legacy-transfer') as { expires_at: number }
@@ -156,7 +157,7 @@ try {
   for (let index = 0; index < 13; index += 1) legacyV13.exec(MIGRATIONS[index])
   legacyV13.pragma('user_version = 13')
   applyMigrations(legacyV13)
-  assert.equal(legacyV13.pragma('user_version', { simple: true }), 15, 'v13 数据库应迁移至 v15')
+  assert.equal(legacyV13.pragma('user_version', { simple: true }), 16, 'v13 数据库应迁移至 v16')
   const v14Grants = new ShareGrantsRepo(legacyV13)
   assert.equal(v14Grants.list().length, 0, '升级到 v14 不得凭空产生例外')
   legacyV13.close()
@@ -553,7 +554,9 @@ try {
     adminIds: ['node-bob'],
     avatarHash,
     adminSecretHash: 'a'.repeat(64),
-    adminHint: '项目代号'
+    adminHint: '项目代号',
+    description: '导出简介',
+    announce: '导出公告'
   }
   groupRepo.save(meta)
   const largeGroupMembers = Array.from({ length: 120 }, (_item, i) => `node-large-${i}`)
@@ -569,7 +572,9 @@ try {
     ownerId: 'node-self',
     adminIds: [],
     adminSecretHash: '',
-    adminHint: ''
+    adminHint: '',
+    description: '',
+    announce: ''
   }
   groupRepo.save(largeGroupMeta)
   assert.equal(
@@ -584,6 +589,13 @@ try {
   )
   assert.equal(groupRepo.get('g-1')?.name, '新名')
   assert.equal(groupRepo.get('g-1')?.avatarHash, avatarHash, '群头像哈希应往返')
+  const longDescription = '简'.repeat(LIMITS.groupDescription + 5)
+  const longAnnounce = '告'.repeat(LIMITS.groupAnnounce + 5)
+  db.prepare('UPDATE groups SET description = ?, announce = ? WHERE group_id = ?').run(
+    longDescription,
+    longAnnounce,
+    'g-1'
+  )
   assert.equal(convRepo.ensureGroup('g-1'), 'group:g-1')
   assert.equal(convRepo.get('group:g-1')?.type, 'group')
 
@@ -663,6 +675,22 @@ try {
     'backup',
     backupPath
   )
+  const exportedGroups = readZip(backupPath).get('groups.jsonl')?.toString('utf8') ?? ''
+  const exportedGroup = exportedGroups
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as { groupId: string; description?: string; announce?: string })
+    .find((group) => group.groupId === 'g-1')
+  assert.equal(
+    exportedGroup?.description,
+    longDescription.slice(0, LIMITS.groupDescription),
+    '备份导出应携带并截断群简介'
+  )
+  assert.equal(
+    exportedGroup?.announce,
+    longAnnounce.slice(0, LIMITS.groupAnnounce),
+    '备份导出应携带并截断群公告'
+  )
   const db2 = openDatabase(join(dir, 'imported.db'))
   try {
     const originalPrepare = db2.prepare.bind(db2)
@@ -716,6 +744,8 @@ try {
     assert.equal(importedGroup?.adminSecretHash, 'a'.repeat(64))
     assert.equal(importedGroup?.adminHint, '项目代号')
     assert.equal(importedGroup?.avatarHash, avatarHash)
+    assert.equal(importedGroup?.description, longDescription.slice(0, LIMITS.groupDescription))
+    assert.equal(importedGroup?.announce, longAnnounce.slice(0, LIMITS.groupAnnounce))
     assert.equal(
       existsSync(join(restoredAvatarDir, `${avatarHash}.webp`)),
       true,
@@ -742,7 +772,7 @@ try {
           exportedAt: Date.now(),
           exportedBy: 'node-old',
           nick: '旧我',
-          counts: { conversations: 1, messages: 1, peers: 0, groups: 1, stickers: 1, transfers: 1, media: 0 }
+          counts: { conversations: 1, messages: 1, peers: 0, groups: 3, stickers: 1, transfers: 1, media: 0 }
         }),
         'utf8'
       )
@@ -782,6 +812,32 @@ try {
           creatorIp: '10.0.0.8',
           adminSecretHash: '',
           adminHint: ''
+        },
+        {
+          groupId: 'g-new-backup',
+          name: '首次导入群',
+          members: ['node-old', 'node-bob'],
+          rev: 1,
+          updatedBy: 'node-old',
+          updatedTs: 6001,
+          creatorId: 'node-old',
+          creatorIp: '10.0.0.8',
+          adminSecretHash: '',
+          adminHint: ''
+        },
+        {
+          groupId: 'g-long-backup',
+          name: '长度截断群',
+          members: ['node-old', 'node-bob'],
+          rev: 1,
+          updatedBy: 'node-old',
+          updatedTs: 6002,
+          creatorId: 'node-old',
+          creatorIp: '10.0.0.8',
+          adminSecretHash: '',
+          adminHint: '',
+          description: longDescription,
+          announce: longAnnounce
         }
       ])
     },
@@ -808,6 +864,22 @@ try {
   ])
   const db3 = openDatabase(join(dir, 'bad-imported.db'))
   try {
+    new GroupRepo(db3).save({
+      groupId: 'g-legacy-backup',
+      name: '本地已有群',
+      members: ['node-new', 'node-bob'],
+      rev: 1,
+      updatedBy: 'node-new',
+      updatedTs: 5000,
+      creatorIp: '10.0.0.8',
+      creatorId: 'node-new',
+      ownerId: 'node-new',
+      adminIds: [],
+      adminSecretHash: '',
+      adminHint: '',
+      description: '本地简介',
+      announce: '本地公告'
+    })
     new PorterService(db3, 'node-new', '新我', join(dir, 'bad-restored')).importBackup(badBackupPath)
     const importedBadTransfer = db3
       .prepare('SELECT files FROM transfers WHERE transfer_id = ?')
@@ -819,6 +891,14 @@ try {
     assert.equal(importedLegacyGroup?.ownerId, 'node-new', '旧备份缺角色字段时应映射并推导群主')
     assert.deepEqual(importedLegacyGroup?.adminIds, [], '旧备份缺角色字段时管理员应为空')
     assert.equal(importedLegacyGroup?.avatarHash, '', '旧备份缺头像字段时应使用默认群头像')
+    assert.equal(importedLegacyGroup?.description, '本地简介', '旧备份缺简介字段时应保留本地值')
+    assert.equal(importedLegacyGroup?.announce, '本地公告', '旧备份缺公告字段时应保留本地值')
+    const importedNewGroup = new GroupRepo(db3).get('g-new-backup')
+    assert.equal(importedNewGroup?.description, '', '首次导入旧备份缺简介字段时应默认为空串')
+    assert.equal(importedNewGroup?.announce, '', '首次导入旧备份缺公告字段时应默认为空串')
+    const importedLongGroup = new GroupRepo(db3).get('g-long-backup')
+    assert.equal(importedLongGroup?.description, longDescription.slice(0, LIMITS.groupDescription))
+    assert.equal(importedLongGroup?.announce, longAnnounce.slice(0, LIMITS.groupAnnounce))
   } finally {
     db3.close()
   }

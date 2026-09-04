@@ -3,6 +3,8 @@ import type { GroupPatch, GroupView } from '../../../shared/ipc'
 export type GroupAdminAction =
   | { kind: 'rename'; name: string }
   | { kind: 'remove'; memberIds: string[] }
+  | { kind: 'set-description'; description: string }
+  | { kind: 'set-announce'; announce: string }
 
 export type GroupAdminPatchResult =
   | { ok: true; patch: GroupPatch }

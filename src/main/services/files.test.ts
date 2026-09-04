@@ -513,7 +513,9 @@ describe('FilesService 群聊媒体', () => {
       ownerId: 'node-self',
       adminIds: [],
       adminSecretHash: '',
-      adminHint: ''
+      adminHint: '',
+      description: '',
+      announce: ''
     }
     const service = new FilesService({
       selfId: 'node-self',
@@ -578,7 +580,9 @@ describe('FilesService 群聊媒体', () => {
       ownerId: 'node-self',
       adminIds: [],
       adminSecretHash: '',
-      adminHint: ''
+      adminHint: '',
+      description: '',
+      announce: ''
     }
     const service = new FilesService({
       selfId: 'node-self',
@@ -629,7 +633,9 @@ describe('FilesService 群聊媒体', () => {
       ownerId: 'node-self',
       adminIds: [],
       adminSecretHash: '',
-      adminHint: ''
+      adminHint: '',
+      description: '',
+      announce: ''
     }
     const service = new FilesService({
       selfId: 'node-self',
@@ -681,7 +687,9 @@ describe('FilesService 群聊媒体', () => {
       ownerId: 'node-self',
       adminIds: [],
       adminSecretHash: '',
-      adminHint: ''
+      adminHint: '',
+      description: '',
+      announce: ''
     }
     const service = new FilesService({
       selfId: 'node-self',
@@ -1552,7 +1560,9 @@ describe('FilesService 取消可恢复（决议 #211）', () => {
         ownerId: 'node-bob',
         adminIds: [],
         adminSecretHash: '',
-        adminHint: ''
+        adminHint: '',
+        description: '',
+        announce: ''
       }) as unknown as GroupRepo,
       tcpPort: 0,
       getSaveDir: () => dir,

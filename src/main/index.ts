@@ -2760,6 +2760,24 @@ if (!gotLock) {
       typeof p.enabled === 'boolean'
     ) {
       clean = { kind: 'set-admin', memberId: p.memberId, enabled: p.enabled }
+    } else if (
+      p.kind === 'set-description' &&
+      hasOnly(['kind', 'description', 'adminPassword']) &&
+      typeof p.description === 'string' &&
+      p.description.length <= LIMITS.groupDescription
+    ) {
+      const adminPassword = password()
+      if (p.adminPassword !== undefined && adminPassword === undefined) return null
+      clean = { kind: 'set-description', description: p.description, ...(adminPassword ? { adminPassword } : {}) }
+    } else if (
+      p.kind === 'set-announce' &&
+      hasOnly(['kind', 'announce', 'adminPassword']) &&
+      typeof p.announce === 'string' &&
+      p.announce.length <= LIMITS.groupAnnounce
+    ) {
+      const adminPassword = password()
+      if (p.adminPassword !== undefined && adminPassword === undefined) return null
+      clean = { kind: 'set-announce', announce: p.announce, ...(adminPassword ? { adminPassword } : {}) }
     } else {
       return null
     }

@@ -424,8 +424,12 @@ export interface GroupView {
   selfRole: GroupRole
   hasAdminPassword: boolean
   adminHint: string
-  /** 当前本机是否可不输入密码直接执行改名/踢人（群主或管理员） */
+  /** 当前本机是否可不输入密码直接执行群管理动作（群主或管理员） */
   canManage: boolean
+  /** 群简介；空串表示未设置 */
+  description: string
+  /** 群公告；空串表示未设置 */
+  announce: string
 }
 
 /** 讨论组单操作变更；一次 IPC 只允许一种行为，防邀请权限与管理权限混用。 */
@@ -435,6 +439,8 @@ export type GroupPatch =
   | { kind: 'remove'; memberIds: string[]; adminPassword?: string }
   | { kind: 'set-admin'; memberId: string; enabled: boolean }
   | { kind: 'set-avatar'; avatarHash: string; adminPassword?: string }
+  | { kind: 'set-description'; description: string; adminPassword?: string }
+  | { kind: 'set-announce'; announce: string; adminPassword?: string }
 
 /** 全局搜索（ui-design §6）：联系人 / 聊天记录（按会话聚合）/ 文件 */
 export interface MessageGroupHit {

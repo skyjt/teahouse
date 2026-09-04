@@ -17,6 +17,8 @@ interface GroupRow {
   avatar_hash?: string
   admin_secret_hash?: string
   admin_hint?: string
+  description?: string
+  announce?: string
 }
 
 function parseMembers(raw: string | undefined): string[] {
@@ -62,7 +64,9 @@ function rowToMeta(row: GroupRow): GroupMeta {
     adminIds,
     avatarHash: isAvatarHash(row.avatar_hash) ? row.avatar_hash : '',
     adminSecretHash: row.admin_secret_hash ?? '',
-    adminHint: row.admin_hint ?? ''
+    adminHint: row.admin_hint ?? '',
+    description: row.description ?? '',
+    announce: row.announce ?? ''
   }
 }
 
@@ -81,7 +85,9 @@ function normalizeMeta(meta: GroupMeta): GroupMeta {
     ),
     avatarHash: isAvatarHash(meta.avatarHash) ? meta.avatarHash : '',
     adminSecretHash: meta.adminSecretHash ?? '',
-    adminHint: meta.adminSecretHash ? (meta.adminHint ?? '').slice(0, 40) : ''
+    adminHint: meta.adminSecretHash ? (meta.adminHint ?? '').slice(0, 40) : '',
+    description: (meta.description ?? '').slice(0, 200),
+    announce: (meta.announce ?? '').slice(0, 1024)
   }
 }
 
@@ -94,11 +100,11 @@ export class GroupRepo {
     this.upsertStmt = db.prepare(`
       INSERT INTO groups (
         group_id, name, members, rev, updated_by, updated_ts,
-        creator_ip, creator_id, owner_id, admin_ids, avatar_hash, admin_secret_hash, admin_hint
+        creator_ip, creator_id, owner_id, admin_ids, avatar_hash, admin_secret_hash, admin_hint, description, announce
       )
       VALUES (
         @groupId, @name, @members, @rev, @updatedBy, @updatedTs,
-        @creatorIp, @creatorId, @ownerId, @adminIds, @avatarHash, @adminSecretHash, @adminHint
+        @creatorIp, @creatorId, @ownerId, @adminIds, @avatarHash, @adminSecretHash, @adminHint, @description, @announce
       )
       ON CONFLICT(group_id) DO UPDATE SET
         name = excluded.name, members = excluded.members, rev = excluded.rev,
@@ -107,7 +113,9 @@ export class GroupRepo {
         owner_id = excluded.owner_id, admin_ids = excluded.admin_ids,
         avatar_hash = excluded.avatar_hash,
         admin_secret_hash = excluded.admin_secret_hash,
-        admin_hint = excluded.admin_hint
+        admin_hint = excluded.admin_hint,
+        description = excluded.description,
+        announce = excluded.announce
     `)
     this.getStmt = db.prepare('SELECT * FROM groups WHERE group_id = ?')
     this.listStmt = db.prepare('SELECT * FROM groups ORDER BY updated_ts DESC')

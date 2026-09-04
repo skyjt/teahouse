@@ -175,7 +175,9 @@ describe('AvatarService', () => {
         adminIds: [],
         avatarHash: hash,
         adminSecretHash: '',
-        adminHint: ''
+        adminHint: '',
+        description: '',
+        announce: ''
       })
       const store = new AvatarStore(root)
       await store.import(hash, bytes)
@@ -289,7 +291,9 @@ describe('AvatarService', () => {
         adminIds: [],
         avatarHash: hash,
         adminSecretHash: '',
-        adminHint: ''
+        adminHint: '',
+        description: '',
+        announce: ''
       })
       const service = new AvatarService({
         selfId: 'node-self',

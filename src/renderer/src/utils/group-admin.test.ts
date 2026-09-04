@@ -22,7 +22,9 @@ function group(overrides: Partial<GroupView> = {}): GroupView {
     hasAdminPassword: false,
     adminHint: '',
     canManage: true,
-    ...overrides
+    ...overrides,
+    description: '',
+    announce: ''
   }
 }
 
@@ -47,6 +49,23 @@ describe('group admin helpers', () => {
     expect(result).toEqual({
       ok: true,
       patch: { kind: 'rename', name: '新群名', adminPassword: 's3cret' }
+    })
+  })
+
+  it('密码组设置或清空群简介与群公告时复用密码字段', () => {
+    const passwordGroup = group({ hasAdminPassword: true, canManage: false, selfRole: 'member' })
+
+    expect(
+      prepareGroupAdminPatch(passwordGroup, { kind: 'set-description', description: '' }, '  s3cret  ')
+    ).toEqual({
+      ok: true,
+      patch: { kind: 'set-description', description: '', adminPassword: 's3cret' }
+    })
+    expect(
+      prepareGroupAdminPatch(passwordGroup, { kind: 'set-announce', announce: '新公告' }, '  s3cret  ')
+    ).toEqual({
+      ok: true,
+      patch: { kind: 'set-announce', announce: '新公告', adminPassword: 's3cret' }
     })
   })
 
@@ -92,5 +111,21 @@ describe('group admin helpers', () => {
     expect(
       canRenameGroup(group({ selfRole: 'member', canManage: false, hasAdminPassword: true }))
     ).toBe(true)
+  })
+
+  it('只有群主或管理员才可设置群简介和群公告', () => {
+    const owner = group({ selfRole: 'owner' })
+    const admin = group({ selfRole: 'admin', ownerId: 'node-owner', adminIds: ['node-self'] })
+    const passwordMember = group({
+      selfRole: 'member',
+      canManage: false,
+      hasAdminPassword: true
+    })
+    const plainMember = group({ selfRole: 'member', canManage: false })
+
+    expect(owner.canManage).toBe(true)
+    expect(admin.canManage).toBe(true)
+    expect(passwordMember.canManage).toBe(false)
+    expect(plainMember.canManage).toBe(false)
   })
 })

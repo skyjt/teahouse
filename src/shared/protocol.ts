@@ -115,7 +115,9 @@ export const LIMITS = {
   groupAdminPassword: 64,
   groupAdminHint: 40,
   groupAdminHash: 64,
-  avatarHash: 64
+  avatarHash: 64,
+  groupDescription: 200,
+  groupAnnounce: 1024
 }
 
 export type Platform = 'win' | 'mac' | 'linux'
@@ -308,6 +310,10 @@ export interface GroupMeta {
   adminSecretHash: string
   /** 管理密码提示；仅用于 UI 展示，不参与鉴权 */
   adminHint: string
+  /** 群简介；空串表示未设置，仅群主、管理员或正确密码持有者可修改；旧 group.info 可缺省 */
+  description: string
+  /** 群公告；空串表示未设置，仅群主、管理员或正确密码持有者可修改；旧 group.info 可缺省 */
+  announce: string
 }
 
 export type GroupPayload =

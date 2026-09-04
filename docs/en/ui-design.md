@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.78 for v0.53.1 |
+| Current design | v1.80 for v0.54.1 |
 | Main-window model | Three columns with Chat, Contacts, and File Cabinet tabs |
 | Authority | [ui-design.md](../ui-design.md) is the canonical UI and interaction record |
 
@@ -148,6 +148,8 @@ Search inputs debounce requests by 200ms and preserve keyboard focus/escape beha
 
 Open the creation flow from the conversation list or add members from a private/group context. Search and select contacts, enter a name, optionally set management credentials, then submit once. Submission locks dismissal; a failed IPC restores controls and shows an inline error. The member panel exposes role-specific invite, remove, rename, owner/admin, avatar, and leave actions.
 
+Group descriptions and announcements appear below the avatar in the member panel and take no space while empty. Owners, administrators, and password-authorized members edit either field through one shared Teleport modal. Description length is capped at 200 characters and announcement length at 1,024; saving an empty value clears existing content. Password members reuse the panel password input and inline error. The modal supports backdrop, Cancel, Escape, initial textarea focus, focus restoration, and a locked busy state.
+
 ### 7.2 Receive a file
 
 An ordinary offer creates a file card with Receive and Save as. Default receive and private direct-send use `save directory/contact name/`; Save as uses the selected directory directly. Transfer progress remains on the card. A receiver cancellation keeps resume state when supported. Expiry removes receive/resume actions and gives each side an explicit terminal label.
@@ -223,12 +225,13 @@ Desktop file-manager semantics apply: single-click select, double-click enter, C
 | `--bubble-peer/mine` | white / 12% primary |
 | `--line` | `rgba(40, 66, 53, 0.10)` |
 | `--material-bar/panel/strong` | theme-specific structural surfaces |
+| `--scrim` | theme-specific translucent modal backdrop |
 | `--surface-hover/selected` | neutral 5% / tea green 12% |
 | `--online/offline` | `#2BA245` / `#C2C2C2` |
 | `--danger/badge` | `#E5484D` / `#FA5151` |
-| Type scale | 12 / 13 / 14 / 16px |
+| `--font-xs/sm/md/lg` | 12 / 13 / 14 / 16px |
 | Spacing | multiples of 4px |
-| Radius | 8–10px controls, 12–16px panels, 999px pills |
+| `--radius-control/panel/pill` | 8 / 12 / 999px |
 
 Circular avatars, local line icons, file-type artwork, tray graphics, and brand art remain consistent across light/dark surfaces and supported operating systems.
 
@@ -238,3 +241,5 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 - **2026-08-26, v1.76, decision #286:** made capture startup failures visible through a dismissible, accessible in-app status or a system notification when the app was already hidden; Linux capture now waits for window hiding and compositor settling to avoid including the app. Repository version 0.51.1 → 0.51.2.
 - **2026-08-27, v1.77, decision #287:** added an accessible sticker-import action with progress/result feedback, sized four-column sticker rows to their square items inside the fixed 200px scrolling region, and enabled saved stickers in groups when another member is online. Repository version 0.51.2 → 0.52.0.
 - **2026-08-29, v1.78, decision #289:** ARM64 Wayland capture now uses the existing visible system-capture paste fallback before Electron 22 native screen enumeration and before hiding the main window. Other platform flows are unchanged. Repository version 0.53.0 → 0.53.1.
+- **2026-08-31, v1.79, decision #290:** added member-panel display, edit, and clear flows for group descriptions and announcements. Both fields share one accessible Teleport text modal and the existing password-aware management path; successful saves refresh the group view immediately, while failures preserve input and show inline feedback. Repository version 0.53.1 → **0.54.0**.
+- **2026-09-05, v1.80, decision #291:** PR #39 review fixes use one `GroupTextDialog`. Ordinary members reuse the group panel's existing management password when saving either field; success refreshes the group view, failure preserves input, and switching dialogs clears stale feedback. Typography, radii, and the scrim use existing tokens. Repository version 0.54.0 → **0.54.1**.
