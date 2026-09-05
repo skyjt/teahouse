@@ -54,6 +54,7 @@ The codebase currently has bounded transfer streams, backpressure, append-only i
 | OPT-22 | P1 | Image pixel gate and bounded thumbnail cache | Complete (#234) |
 | OPT-23 | P2 | Keep the conversation menu inside the viewport using measured dimensions | Complete (#294), v0.54.4 |
 | OPT-24 | P2 | Clean up global-search debounce and stale requests | Complete (#295), v0.54.5 |
+| OPT-25 | P2 | Reuse reactive message indexes and coalesce in-flight message/transfer reads | Complete (#296), v0.54.6 |
 
 ## 3. Continuing performance constraints
 
@@ -86,3 +87,5 @@ These choices affect product behavior, architecture, or risk and must be scoped 
 - **2026-09-05, OPT-23 complete:** 656 tests and all five local checks passed, with loopback-only smoke. Native macOS checks cover bottom-edge menus at 100/110/125%, pin/mute, removal confirmation/undo, and Escape; geometry tests cover all corners and viewport shrink.
 - **2026-09-05, decision #295:** OPT-24 preserves 200ms debounce and query semantics, invalidates stale callbacks on query change/unmount, and adds loading/failure placeholders with retry on new input. Planned version **0.54.5**.
 - **2026-09-05, OPT-24 complete:** 662 tests and all five local checks passed with loopback smoke. Native macOS checks cover loading feedback, offline contact results, query changes, and message-hit navigation.
+- **2026-09-05, decision #296:** OPT-25 reuses conversation-scoped reactive ID indexes and coalesces only in-flight historical-message/transfer reads. Success, missing values, and failures release requests; realtime transfer projections take precedence over earlier reads. Planned version **0.54.6**.
+- **2026-09-05, OPT-25 complete:** 674 tests and all five local checks passed with loopback smoke. The real Electron window issued one message read when opening 50 same-source quotes; navigation, recalled/missing/cross-conversation hints, and ordinary input passed. Common startup is 80,252 bytes; App JS/CSS are 796,078/115,605 bytes, within all existing four-window budgets. OPT-23–25 are complete; Windows 7/UOS hands-on validation remains target-platform work.

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { shallowReactive } from 'vue'
 import type {
   ConversationView,
   ForwardResult,
@@ -25,13 +26,14 @@ interface MessageCache {
   byId: Map<string, MessageView>
 }
 
-const messageCaches = new Map<string, MessageCache>()
+const messageCaches = shallowReactive(new Map<string, MessageCache>())
+const messageRequests = new Map<string, Promise<MessageView | null>>()
 
 function rebuildMessageCache(convId: string, list: MessageView[]): MessageCache {
   const cache: MessageCache = {
     list,
     ids: new Set<string>(),
-    byId: new Map<string, MessageView>()
+    byId: shallowReactive(new Map<string, MessageView>())
   }
   for (const msg of list) {
     cache.ids.add(msg.id)
@@ -242,7 +244,18 @@ export const useChatStore = defineStore('chat', {
       }, 2600)
     },
     async getMessageById(msgId: string): Promise<MessageView | null> {
-        return await window.pantry.getMessageById(msgId)
+      let request = messageRequests.get(msgId)
+      if (!request) {
+        request = window.pantry.getMessageById(msgId)
+          .catch(() => null) // 读取失败沿用不可用提示，下次读取仍可重试。
+          .finally(() => messageRequests.delete(msgId))
+        messageRequests.set(msgId, request)
+      }
+      return request
+    },
+    getCachedMessage(convId: string, msgId: string): MessageView | undefined {
+      const list = this.messages[convId]
+      return list ? messageCacheFor(convId, list).byId.get(msgId) : undefined
     },
     async jumpToMessageById(msgId: string): Promise<void> {
       const info = await this.getMessageById(msgId)

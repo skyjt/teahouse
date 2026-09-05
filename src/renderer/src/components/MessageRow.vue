@@ -71,7 +71,7 @@ watch(
   async ([replyTo, convId], _previous, onCleanup) => {
     historicalReply.value = undefined
     if (!replyTo) return
-    const activeReply = chatStore.activeMessages.find((message) => message.id === replyTo)
+    const activeReply = chatStore.getCachedMessage(convId, replyTo)
     if (activeReply) {
       historicalReply.value = activeReply
       return
@@ -90,7 +90,7 @@ const replyMeta = computed((): ReplyMeta => {
   const replyTo = props.msg.replyTo
   if (!replyTo) return { id: '', senderName: '', text: '' }
   const replyMsg =
-    chatStore.activeMessages.find((message) => message.id === replyTo) ?? historicalReply.value
+    chatStore.getCachedMessage(props.msg.convId, replyTo) ?? historicalReply.value
   if (!replyMsg) {
     return {
       id: replyTo,

@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
+import { computed, watch } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConversationView, MessageView } from '../../../shared/ipc'
 import { useChatStore } from './chat'
@@ -38,6 +39,73 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
+
+describe('引用消息索引与进行中读取去重', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+  it.each([50, 300, 1000])('%s 条缓存按 ID 读取，保持所属会话隔离', (count) => {
+    const store = useChatStore()
+    store.setConversationMessages('group:a', Array.from({ length: count }, (_, i) => msg(`m${i}`, 'group:a', i)))
+    store.setConversationMessages('group:b', [msg('other', 'group:b')])
+    const find = vi.spyOn(store.messages['group:a'], 'find')
+    expect(store.getCachedMessage('group:a', `m${count - 1}`)?.seq).toBe(count - 1)
+    expect(store.getCachedMessage('group:a', 'other')).toBeUndefined()
+    expect(store.getCachedMessage('group:b', 'm0')).toBeUndefined()
+    expect(find).not.toHaveBeenCalled()
+  })
+
+  it('引用订阅跟随追加、撤回、同数组重建、重载与裁剪，其他 ID 更新不触发重算', () => {
+    const store = useChatStore()
+    store.setConversationMessages('group:a', [])
+    const read = vi.fn(() => {
+      const target = store.getCachedMessage('group:a', 'target')
+      return target ? `${target.text}:${target.status}` : '缺失'
+    })
+    const summary = computed(read)
+    const changes: string[] = []
+    const stop = watch(summary, (next) => changes.push(next), { immediate: true, flush: 'sync' })
+    store.appendConversationMessage('group:a', msg('other', 'group:a'))
+    expect(read).toHaveBeenCalledTimes(1)
+    store.appendConversationMessage('group:a', msg('target', 'group:a'))
+    store.updateConversationMessageStatus('group:a', 'target', 'recalled')
+    store.setConversationMessages('group:a', store.messages['group:a'])
+    store.updateConversationMessageStatus('group:a', 'target', 'sent')
+    store.setConversationMessages('group:a', [{ ...msg('target', 'group:a'), text: '重新加载' }])
+    store.trimConversationHead('group:a', 0)
+    store.prependEarlierMessages('group:a', [msg('target', 'group:a')])
+    expect(changes).toEqual(['缺失', '[图片]:sending', '[图片]:recalled', '[图片]:sent', '重新加载:sending', '缺失', '[图片]:sending'])
+    stop()
+  })
+
+  it('50 个相同页外目标合并成一次读取，结束后重新读取最新值', async () => {
+    const pending = deferred<MessageView | null>()
+    const source = msg('source', 'group:a')
+    const getMessageById = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ ...source, status: 'recalled' })
+    vi.stubGlobal('window', { pantry: { getMessageById } })
+    const store = useChatStore()
+    const reads = Array.from({ length: 50 }, () => store.getMessageById('source'))
+    expect(getMessageById).toHaveBeenCalledTimes(1)
+    pending.resolve(source)
+    const results = await Promise.all(reads)
+    expect(results.every((value) => value === source)).toBe(true)
+    expect((await store.getMessageById('source'))?.status).toBe('recalled')
+    expect(getMessageById).toHaveBeenCalledTimes(2)
+  })
+
+  it('不同目标独立读取，失败与缺失均释放并允许重试', async () => {
+    const getMessageById = vi.fn()
+      .mockRejectedValueOnce(new Error('临时失败'))
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(msg('a'))
+    vi.stubGlobal('window', { pantry: { getMessageById } })
+    const store = useChatStore()
+    expect(await Promise.all([store.getMessageById('a'), store.getMessageById('b')])).toEqual([null, null])
+    await store.getMessageById('a')
+    await store.getMessageById('b')
+    expect(getMessageById.mock.calls).toEqual([['a'], ['b'], ['a'], ['b']])
+  })
+})
 
 describe('chat store 自己发送后的滚动意图', () => {
   beforeEach(() => {

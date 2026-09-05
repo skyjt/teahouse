@@ -6,6 +6,8 @@ interface SpeedSample {
   ts: number
 }
 
+const transferRequests = new Map<string, Promise<TransferView | null>>()
+
 // 文件卡片的数据源：主进程传输状态投影 + 本地测速
 export const useTransfersStore = defineStore('transfers', {
   state: () => ({
@@ -34,8 +36,16 @@ export const useTransfersStore = defineStore('transfers', {
     /** 文件消息渲染时懒加载（历史消息的卡片状态） */
     async ensure(transferId: string): Promise<void> {
       if (this.byId[transferId]) return
-      const view = await window.pantry.getTransfer(transferId)
-      if (view) this.byId[transferId] = view
+      let request = transferRequests.get(transferId)
+      if (!request) {
+        request = window.pantry.getTransfer(transferId)
+          .catch(() => null) // 保留实时状态渠道，后续挂载可重试。
+          .finally(() => transferRequests.delete(transferId))
+        transferRequests.set(transferId, request)
+      }
+      const view = await request
+      // 请求期间可能已经收到更晚的进度或终态推送。
+      if (view && !this.byId[transferId]) this.byId[transferId] = view
     },
     accept(transferId: string, saveAs = false): void {
       void window.pantry.acceptTransfer(transferId, saveAs)
@@ -54,4 +64,3 @@ export const useTransfersStore = defineStore('transfers', {
     }
   }
 })
-

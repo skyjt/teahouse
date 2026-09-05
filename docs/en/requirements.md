@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.54.5 global-search request cleanup; Neiwangtong compatibility remains paused by decision #199 |
+| Status | Current for v0.54.6 quote/transfer read coalescing; Neiwangtong compatibility remains paused by decision #199 |
 | Updated | 2026-09-05 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
@@ -163,6 +163,7 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 | #293 | Main-window Escape | An unmodified, non-repeating Escape hides the main window after local overlays and selection have handled it. Composition and consumed events take precedence. Only the main renderer can invoke the hide IPC; minimize when the tray is unavailable. Close preferences and configurable global shortcuts remain intact. Ship as v0.54.3. |
 | #294 | OPT-23: conversation menu placement | Clamp the measured menu inside the CSS viewport with an 8px margin and reposition while open on resize. Preserve pin/mute/remove actions, confirmation, ten-second undo, Escape priority, and existing page zoom. Protocol, storage, dependencies, and platform compatibility branches stay unchanged. Ship as v0.54.4. |
 | #295 | OPT-24: global-search lifecycle | Clear debounce timers and invalidate stale requests on query change/unmount. Only the current request updates results, error, and loading state. Preserve 200ms debounce, query categories/order/limits, navigation, and IME behavior; use existing loading/error placeholders and retry on new input. Ship as v0.54.5. |
+| #296 | OPT-25: quote/transfer reads | Quotes use the existing conversation-scoped ID index with reactive append/trim/reload/recall updates. Coalesce same-ID in-flight historical-message and transfer reads; release after success, missing result, or failure and allow retry. Realtime transfer state takes precedence over an earlier read. No additional permanent history cache or protocol/database/state-machine/platform changes. Ship as v0.54.6. |
 
 ## 9. Open items
 
