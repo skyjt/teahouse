@@ -55,6 +55,7 @@ The codebase currently has bounded transfer streams, backpressure, append-only i
 | OPT-23 | P2 | Keep the conversation menu inside the viewport using measured dimensions | Complete (#294), v0.54.4 |
 | OPT-24 | P2 | Clean up global-search debounce and stale requests | Complete (#295), v0.54.5 |
 | OPT-25 | P2 | Reuse reactive message indexes and coalesce in-flight message/transfer reads | Complete (#296), v0.54.6 |
+| OPT-26 | P1 | Single FTS aggregation with indexed summary lookup | Complete (#297), v0.54.7 |
 
 ## 3. Continuing performance constraints
 
@@ -89,3 +90,5 @@ These choices affect product behavior, architecture, or risk and must be scoped 
 - **2026-09-05, OPT-24 complete:** 662 tests and all five local checks passed with loopback smoke. Native macOS checks cover loading feedback, offline contact results, query changes, and message-hit navigation.
 - **2026-09-05, decision #296:** OPT-25 reuses conversation-scoped reactive ID indexes and coalesces only in-flight historical-message/transfer reads. Success, missing values, and failures release requests; realtime transfer projections take precedence over earlier reads. Planned version **0.54.6**.
 - **2026-09-05, OPT-25 complete:** 674 tests and all five local checks passed with loopback smoke. The real Electron window issued one message read when opening 50 same-source quotes; navigation, recalled/missing/cross-conversation hints, and ordinary input passed. Common startup is 80,252 bytes; App JS/CSS are 796,078/115,605 bytes, within all existing four-window budgets. OPT-23–25 are complete; Windows 7/UOS hands-on validation remains target-platform work.
+- **2026-09-05, decision #297:** start the user-approved second September batch. OPT-26 preserves text/PK counts and ordering, all-type latest summaries, tokenizer/LIKE behavior, and existing limits. Use one MATCH plus indexed seq lookups, with the legacy lookup for non-unique seq values. Probe at 100k rows: common text 358.94 → 50.27ms; no-hit 2.75 → 2.74ms; high-match filenames 9.31 → 10.84ms. Planned version **0.54.7**.
+- **2026-09-05, OPT-26 complete:** 674 tests and all five local checks passed, including v9 migration and field-by-field comparisons against the legacy queries. Real Electron Node 16.17.1 / ABI 110 / SQLite 3.45.3, eight alternating measured runs per implementation at 100k rows: common text **366.56 → 51.63ms (86% lower)**, no-hit **2.69 → 2.73ms**, high-match filenames **9.27 → 10.83ms**. Results are identical; aggregating all matching types adds about 1.6ms in the filename sample while preserving existing summary semantics.

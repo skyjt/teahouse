@@ -17,6 +17,7 @@ import { parsePkRef, pkPreview } from '../../shared/pk'
 export class SearchService {
   private readonly msgGroupStmt: DatabaseT.Statement
   private readonly msgLatestStmt: DatabaseT.Statement
+  private readonly msgLatestFallbackStmt: DatabaseT.Statement
   private readonly fileStmt: DatabaseT.Statement
   private readonly conversationStmtCache = new Map<string, DatabaseT.Statement>()
 
@@ -26,12 +27,17 @@ export class SearchService {
     private readonly remarkOf: (nodeId: string) => string = () => ''
   ) {
     this.msgGroupStmt = db.prepare(`
-      SELECT m.conv_id AS convId, COUNT(*) AS n, MAX(m.seq) AS latestSeq
+      SELECT m.conv_id AS convId, SUM(m.kind IN ('text', 'pk')) AS n, MAX(m.seq) AS latestSeq
       FROM messages_fts f JOIN messages m ON m.id = f.msg_id
-      WHERE messages_fts MATCH ? AND m.kind IN ('text', 'pk')
-      GROUP BY m.conv_id ORDER BY MAX(m.ts) DESC LIMIT 10
+      WHERE messages_fts MATCH ?
+      GROUP BY m.conv_id HAVING n > 0
+      ORDER BY MAX(CASE WHEN m.kind IN ('text', 'pk') THEN m.ts END) DESC LIMIT 10
     `)
     this.msgLatestStmt = db.prepare(`
+      SELECT id, content, ts, seq FROM messages WHERE conv_id = ? AND seq = ? LIMIT 2
+    `)
+    // 旧库 seq 无唯一约束；异常同序号保留原 MATCH 的选择方式。
+    this.msgLatestFallbackStmt = db.prepare(`
       SELECT m.id, m.content, m.ts, m.seq
       FROM messages_fts f JOIN messages m ON m.id = f.msg_id
       WHERE messages_fts MATCH ? AND m.conv_id = ?
@@ -89,9 +95,11 @@ export class SearchService {
         latestSeq: number
       }>
       for (const g of groups) {
-        const latest = this.msgLatestStmt.get(ftsQuery, g.convId) as
-          | { id: string; content: string; ts: number; seq: number }
-          | undefined
+        type Latest = { id: string; content: string; ts: number; seq: number }
+        const indexed = this.msgLatestStmt.all(g.convId, g.latestSeq) as Latest[]
+        const latest = indexed.length === 1
+          ? indexed[0]
+          : this.msgLatestFallbackStmt.get(ftsQuery, g.convId) as Latest | undefined
         messageGroups.push({
           convId: g.convId,
           peerId: g.convId.startsWith('single:') ? g.convId.slice(7) : g.convId,
