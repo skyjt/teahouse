@@ -125,36 +125,40 @@ function displayName(peer: PeerView): string {
     </div>
     <div v-if="peersStore.peers.length === 0" class="placeholder">正在发现同网段节点…</div>
     <ul v-else class="tree">
-      <li
-        v-for="row in rows"
-        :key="row.key"
-        :class="row.kind"
-        :style="{ paddingLeft: `${12 + row.level * 14}px` }"
-        @click="onRowClick(row)"
-        @dblclick="onRowDoubleClick(row)"
-      >
-        <template v-if="row.kind === 'group'">
-          <span class="arrow">{{ collapsed.has(row.key) ? '▸' : '▾' }}</span>
-          <span class="g-label">{{ row.label }}</span>
-          <span class="g-count">({{ row.online }}/{{ row.total }})</span>
-        </template>
-        <template v-else>
-          <AvatarMark
-            class="peer-avatar"
-            :class="{ off: !row.peer!.online }"
-            :avatar="row.peer!.avatar"
-            :avatar-hash="row.peer!.avatarHash"
-            :name="displayName(row.peer!)"
-            :offline="!row.peer!.online"
-          />
-          <span class="peer-main">
-            <span class="peer-name" :class="{ dim: !row.peer!.online }">
-              {{ displayName(row.peer!) }}
+      <li v-for="row in rows" :key="row.key">
+        <button
+          type="button"
+          class="tree-row"
+          :class="row.kind"
+          :style="{ paddingLeft: `${12 + row.level * 14}px` }"
+          @click="onRowClick(row)"
+          @dblclick="onRowDoubleClick(row)"
+          :aria-expanded="row.kind === 'group' ? !collapsed.has(row.key) : undefined"
+          :aria-label="row.peer ? `${displayName(row.peer)}，${row.peer.online ? '在线' : '离线'}，${row.peer.ip}` : undefined"
+        >
+          <template v-if="row.kind === 'group'">
+            <span class="arrow" aria-hidden="true">{{ collapsed.has(row.key) ? '▸' : '▾' }}</span>
+            <span class="g-label">{{ row.label }}</span>
+            <span class="g-count">({{ row.online }}/{{ row.total }})</span>
+          </template>
+          <template v-else>
+            <AvatarMark
+              class="peer-avatar"
+              :class="{ off: !row.peer!.online }"
+              :avatar="row.peer!.avatar"
+              :avatar-hash="row.peer!.avatarHash"
+              :name="displayName(row.peer!)"
+              :offline="!row.peer!.online"
+            />
+            <span class="peer-main">
+              <span class="peer-name" :class="{ dim: !row.peer!.online }">
+                {{ displayName(row.peer!) }}
+              </span>
+              <span class="peer-sub">{{ row.peer!.ip }}</span>
             </span>
-            <span class="peer-sub">{{ row.peer!.ip }}</span>
-          </span>
-          <span class="dot" :class="row.peer!.online ? 'on' : 'off'"></span>
-        </template>
+            <span class="dot" :class="row.peer!.online ? 'on' : 'off'"></span>
+          </template>
+        </button>
       </li>
     </ul>
   </div>
@@ -190,7 +194,13 @@ function displayName(peer: PeerView): string {
   flex: 1;
   padding: 0 8px 10px;
 }
-.tree li {
+.tree-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -206,10 +216,14 @@ function displayName(peer: PeerView): string {
     background 150ms ease,
     transform 90ms ease-out;
 }
-.tree li:hover {
+.tree-row:hover {
   background: var(--surface-hover);
 }
-.tree li:active {
+.tree-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.tree-row:active {
   transform: scale(0.988);
 }
 .arrow {
@@ -273,10 +287,10 @@ function displayName(peer: PeerView): string {
   background: var(--offline);
 }
 @media (prefers-reduced-motion: reduce) {
-  .tree li {
+  .tree-row {
     transition: none;
   }
-  .tree li:active {
+  .tree-row:active {
     transform: none;
   }
 }

@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.54.11 list metadata contrast; Neiwangtong compatibility remains paused by decision #199 |
+| Status | Current for v0.54.12 keyboard list actions; Neiwangtong compatibility remains paused by decision #199 |
 | Updated | 2026-09-05 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
@@ -169,6 +169,7 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 | #299 | OPT-28: thumbnail concurrency | Bound the near-viewport thumbnail pipeline to 4 hardware-rendered or 2 software/unknown-profile jobs. Same-ID images share work; leaving the near viewport, rebinding, or unmounting releases a demand, and unstarted jobs with no remaining demand are discarded. Running jobs complete and release their slots. Reuse the existing 512-entry LRU for completed URLs, preserving cache parameters, animation/small-image/original fallbacks, the 480px margin, viewer/OCR/pixel guards, and existing protocol/IPC/database/dependencies. Ship as v0.54.9. |
 | #300 | CI packaging performance | Linux installs dependencies without automatic lifecycle hooks, explicitly restores required non-native setup, and source-builds better-sqlite3 once on Debian 10. Each platform builds the application once and reuses it for smoke and packaging. Cache downloads per platform/job and disable artifact recompression. Keep all validation, triggers, five platforms, 15 assets, and compatibility baselines. Ship as v0.54.10. |
 | #301 | OPT-29: readable list metadata | Apply the existing secondary-text token locally to conversation times/previews/counts, contact IPs/counts/offline names, search labels/summaries/organization/offline information, and placeholders/status messages. Preserve gray offline semantics, disabled controls, global tokens, geometry, typography, zoom and platform branches. Ship as v0.54.11. |
+| #302 | OPT-30: keyboard list actions | Use native type=button controls for conversations, contact groups/peers and all global-search result categories. Tab/Enter/Space follow native behavior and existing click callbacks, with a local inset focus-visible outline. Preserve double-click chat, context menus, Escape, geometry, font inheritance, truncation, reduced motion and IME/platform branches. Expose expanded/current/contact-status semantics without new global shortcuts. Ship as v0.54.12. |
 
 ## 9. Open items
 

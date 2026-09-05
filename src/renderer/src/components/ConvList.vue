@@ -114,49 +114,51 @@ function confirmRemove(): void {
       还没有会话<br />去「通讯录」找个人开聊
     </div>
     <ul v-else class="conv-list">
-      <li
-        v-for="conv in chatStore.visibleConvs"
-        :key="conv.id"
-        class="conv"
-        :class="{ active: conv.id === chatStore.activeConvId, pinned: conv.pinned }"
-        @click="chatStore.openConv(conv.id)"
-        @contextmenu.prevent.stop="openMenu($event, conv)"
-      >
-        <GroupAvatar
-          v-if="conv.type === 'group'"
-          class="conv-avatar grp"
-          :avatar-hash="groupsStore.byId[conv.peerId]?.avatarHash"
-        />
-        <AvatarMark
-          v-else
-          class="conv-avatar"
-          :avatar="peersStore.byId(conv.peerId)?.avatar ?? -1"
-          :avatar-hash="peersStore.byId(conv.peerId)?.avatarHash"
-          :name="nickOf(conv.peerId)"
-          :presence="(peersStore.byId(conv.peerId)?.online ?? false) ? 'online' : 'offline'"
-        />
-        <span class="conv-main">
-          <span class="row1">
-            <span class="conv-name">
-              <em v-if="conv.pinned" class="flag">置顶</em>
-              <em v-if="conv.muted" class="flag muted">静音</em>
-              {{ convName(conv) }}
+      <li v-for="conv in chatStore.visibleConvs" :key="conv.id">
+        <button
+          type="button"
+          class="conv"
+          :class="{ active: conv.id === chatStore.activeConvId, pinned: conv.pinned }"
+          @click="chatStore.openConv(conv.id)"
+          @contextmenu.prevent.stop="openMenu($event, conv)"
+          :aria-current="conv.id === chatStore.activeConvId ? 'true' : undefined"
+        >
+          <GroupAvatar
+            v-if="conv.type === 'group'"
+            class="conv-avatar grp"
+            :avatar-hash="groupsStore.byId[conv.peerId]?.avatarHash"
+          />
+          <AvatarMark
+            v-else
+            class="conv-avatar"
+            :avatar="peersStore.byId(conv.peerId)?.avatar ?? -1"
+            :avatar-hash="peersStore.byId(conv.peerId)?.avatarHash"
+            :name="nickOf(conv.peerId)"
+            :presence="(peersStore.byId(conv.peerId)?.online ?? false) ? 'online' : 'offline'"
+          />
+          <span class="conv-main">
+            <span class="row1">
+              <span class="conv-name">
+                <em v-if="conv.pinned" class="flag">置顶</em>
+                <em v-if="conv.muted" class="flag muted">静音</em>
+                {{ convName(conv) }}
+              </span>
+              <span class="conv-time">{{ listTime(conv.lastTs) }}</span>
             </span>
-            <span class="conv-time">{{ listTime(conv.lastTs) }}</span>
-          </span>
-          <span class="row2">
-            <span v-if="conv.mentioned" class="mention">[有人@我]</span>
-            <span class="conv-preview">
-              <template v-for="(part, index) in splitEmojiText(conv.preview)" :key="index">
-                <CompatEmoji v-if="part.emoji" :emoji="part.text" />
-                <span v-else>{{ part.text }}</span>
-              </template>
+            <span class="row2">
+              <span v-if="conv.mentioned" class="mention">[有人@我]</span>
+              <span class="conv-preview">
+                <template v-for="(part, index) in splitEmojiText(conv.preview)" :key="index">
+                  <CompatEmoji v-if="part.emoji" :emoji="part.text" />
+                  <span v-else>{{ part.text }}</span>
+                </template>
+              </span>
+              <span v-if="conv.unread > 0" class="badge" :class="{ muted: conv.muted }">{{
+                conv.unread > 99 ? '99+' : conv.unread
+              }}</span>
             </span>
-            <span v-if="conv.unread > 0" class="badge" :class="{ muted: conv.muted }">{{
-              conv.unread > 99 ? '99+' : conv.unread
-            }}</span>
           </span>
-        </span>
+        </button>
       </li>
     </ul>
     <div
@@ -224,6 +226,12 @@ function confirmRemove(): void {
   padding: 0 8px 10px;
 }
 .conv {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -268,6 +276,10 @@ function confirmRemove(): void {
 .conv.active .flag.muted {
   color: var(--text-2);
   border-color: var(--line);
+}
+.conv:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 .conv:active {
   transform: scale(0.985);

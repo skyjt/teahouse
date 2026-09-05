@@ -74,6 +74,10 @@ Decision #294: measure the context menu after rendering and clamp it within an 8
 
 ## 4. Contacts
 
+Global-search buttons explicitly stretch their column content; filenames have their own truncating text span so long names and summaries keep ellipses without horizontal overflow.
+
+Decision #302 / OPT-30: conversation, contact/group and global-search rows use native type=button actions. Tab focuses; Enter/Space invoke the existing single-click action. Contacts show the profile, whose existing Send message button opens chat; mouse double-click still opens chat directly. Expose group expanded state, current conversation, and contact names including presence/IP. A local 2px tea-green inset focus-visible outline preserves layout and selection styling. Keep context menus, Escape, font inheritance, truncation, reduced motion and IME/platform behavior; no additional global keyboard listeners.
+
 ```text
 Discussion groups
 Company (online/total)
@@ -251,3 +255,4 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 - **2026-09-05, v1.82, decision #294:** keep the measured conversation menu inside the viewport through resize and existing page zoom. Repository version 0.54.3 → **0.54.4**.
 - **2026-09-05, v1.83, decision #295:** isolate stale global-search responses and provide loading/failure feedback. Repository version 0.54.4 → **0.54.5**.
 - **2026-09-05, v1.84, decision #301:** improve list metadata readability using the existing secondary token locally, preserving offline semantics, disabled controls, global tokens and geometry. Version **0.54.10 → 0.54.11**.
+- **2026-09-05, v1.85, decision #302:** native list buttons add Tab/Enter/Space and local inset focus indicators, with expanded/current/presence semantics and existing mouse/IME/platform behavior. Version **0.54.11 → 0.54.12**.

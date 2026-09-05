@@ -58,7 +58,8 @@ async function openHit(convId: string, seq: number, msgId: string): Promise<void
     <div v-else class="results">
       <template v-if="result.peers.length > 0">
         <div class="sec">联系人</div>
-        <div
+        <button
+          type="button"
           v-for="p in result.peers"
           :key="p.nodeId"
           class="item peer-item"
@@ -77,12 +78,13 @@ async function openHit(convId: string, seq: number, msgId: string): Promise<void
             >
             <span class="s">{{ [p.company, p.dept, p.team].filter(Boolean).join(' / ') || p.ip }}</span>
           </span>
-        </div>
+        </button>
       </template>
 
       <template v-if="result.messageGroups.length > 0">
         <div class="sec">聊天记录</div>
-        <div
+        <button
+          type="button"
           v-for="g in result.messageGroups"
           :key="g.convId"
           class="item"
@@ -90,23 +92,26 @@ async function openHit(convId: string, seq: number, msgId: string): Promise<void
         >
           <span class="t">与 {{ convName(g.convId, g.peerId) }} 的聊天 · {{ g.count }} 条相关</span>
           <span class="s">{{ g.snippet }} <i class="time">{{ listTime(g.ts) }}</i></span>
-        </div>
+        </button>
       </template>
 
       <template v-if="result.files.length > 0">
         <div class="sec">文件</div>
-        <div
+        <button
+          type="button"
           v-for="f in result.files"
           :key="f.msgId"
           class="item"
           @click="openHit(f.convId, f.seq, f.msgId)"
         >
-          <span class="t file-title"><PantryIcon name="file" :size="14" />{{ f.name }}</span>
+          <span class="t file-title">
+            <PantryIcon name="file" :size="14" /><span class="t">{{ f.name }}</span>
+          </span>
           <span class="s"
             >来自与 {{ convName(f.convId, f.peerId) }} 的聊天
             <i class="time">{{ listTime(f.ts) }}</i></span
           >
-        </div>
+        </button>
       </template>
     </div>
   </div>
@@ -137,11 +142,22 @@ async function openHit(convId: string, seq: number, msgId: string): Promise<void
   border-top: 1px solid var(--line);
 }
 .item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   padding: 8px 12px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 2px;
+}
+.item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 .item:hover {
   background: var(--line);
