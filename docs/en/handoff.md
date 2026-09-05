@@ -4,7 +4,7 @@
 
 This is the English current-state handoff for developers and coding agents. Read it together with the [Contributing guide](../../CONTRIBUTING.en.md) and any local automation policy included in your development checkout. The Chinese handoff keeps the complete chronological release notes; `git log` remains authoritative for current implementation history.
 
-Last updated: 2026-09-05 for **v0.54.3** (decision #293, main-window Escape handling with overlay priority). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
+Last updated: 2026-09-05 for **v0.54.4** (decision #294, conversation-menu viewport placement). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
 
 ## 0. Reading order
 
@@ -20,7 +20,7 @@ Last updated: 2026-09-05 for **v0.54.3** (decision #293, main-window Escape hand
 
 | Area | State |
 |---|---|
-| Version | 0.54.3 main-window Escape handling (decision #293) |
+| Version | 0.54.4 conversation-menu viewport placement (decision #294) |
 | Branch/release base | `main`, previous release tag `v0.53.1` |
 | Core messaging | Private/group text, images, files, stickers, recall, forwarding, mentions, nudge, PK, offline retry |
 | Discovery | Same-subnet broadcast, manual IP/CIDR, gossip, scan-range sharing, confirmed global refresh |

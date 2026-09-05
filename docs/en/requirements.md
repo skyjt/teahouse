@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.54.3 main-window Escape handling; Neiwangtong compatibility remains paused by decision #199 |
+| Status | Current for v0.54.4 conversation-menu viewport placement; Neiwangtong compatibility remains paused by decision #199 |
 | Updated | 2026-09-05 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
@@ -161,6 +161,7 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 | #291 | Harden PR #39 after review | Keep the new `group.info` fields optional for legacy peers and preserve locally known values when omitted. Accept one description or announcement change at a time only from an owner, administrator, or member with the correct management password; reject text smuggled alongside invite, rename, or another text change. Reuse one renderer dialog and the existing password-aware update path, and preserve both fields in backups. Protocol v0.51, SQLite v16, dependencies, and ports remain unchanged. Ship as v0.54.1. |
 | #292 | Restore group snapshot catch-up | Local IPC and adjacent revisions remain single-operation. A cumulative snapshot needs a revision gap covering its changed text fields and recognized structural operation; text authorization and the existing structural permission matrix must both pass. High revisions never bypass authorization or allow unknown structural combinations. Protocol v0.51 and SQLite v16 remain unchanged. Ship as v0.54.2. |
 | #293 | Main-window Escape | An unmodified, non-repeating Escape hides the main window after local overlays and selection have handled it. Composition and consumed events take precedence. Only the main renderer can invoke the hide IPC; minimize when the tray is unavailable. Close preferences and configurable global shortcuts remain intact. Ship as v0.54.3. |
+| #294 | OPT-23: conversation menu placement | Clamp the measured menu inside the CSS viewport with an 8px margin and reposition while open on resize. Preserve pin/mute/remove actions, confirmation, ten-second undo, Escape priority, and existing page zoom. Protocol, storage, dependencies, and platform compatibility branches stay unchanged. Ship as v0.54.4. |
 
 ## 9. Open items
 

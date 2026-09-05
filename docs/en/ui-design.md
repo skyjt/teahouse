@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.81 for v0.54.3 |
+| Current design | v1.82 for v0.54.4 |
 | Main-window model | Three columns with Chat, Contacts, and File Cabinet tabs |
 | Authority | [ui-design.md](../ui-design.md) is the canonical UI and interaction record |
 
@@ -67,6 +67,8 @@ The selected row uses a weak tea-green material and a 3px inset accent line. Pre
 The context menu includes Pin, Mute, and Remove conversation. Removal opens a confirmation that explains history deletion. Confirmation removes the row immediately and displays a bottom-centered ten-second Undo capsule; expiry commits deletion of messages, FTS entries, and the conversation record.
 
 The list `+` opens discussion-group creation with searchable multi-selection.
+
+Decision #294: measure the context menu after rendering and clamp it within an 8px CSS viewport margin. Reposition while open on resize. Keep existing `webContents` page zoom, menu actions, and Escape priority.
 
 ## 4. Contacts
 
@@ -244,3 +246,4 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 - **2026-08-31, v1.79, decision #290:** added member-panel display, edit, and clear flows for group descriptions and announcements. Both fields share one accessible Teleport text modal and the existing password-aware management path; successful saves refresh the group view immediately, while failures preserve input and show inline feedback. Repository version 0.53.1 → **0.54.0**.
 - **2026-09-05, v1.80, decision #291:** PR #39 review fixes use one `GroupTextDialog`. Ordinary members reuse the group panel's existing management password when saving either field; success refreshes the group view, failure preserves input, and switching dialogs clears stale feedback. Typography, radii, and the scrim use existing tokens. Repository version 0.54.0 → **0.54.1**.
 - **2026-09-05, v1.81, decision #293:** plain Escape hides only the main window. IME composition, modifiers, repeats, consumed events, dialogs, menus, and cabinet selection take precedence. First-run setup and an open settings window block hiding; use minimize if the tray is unavailable. Close preferences and global shortcuts remain intact. Repository version 0.54.2 → **0.54.3**.
+- **2026-09-05, v1.82, decision #294:** keep the measured conversation menu inside the viewport through resize and existing page zoom. Repository version 0.54.3 → **0.54.4**.

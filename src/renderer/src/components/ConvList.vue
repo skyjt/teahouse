@@ -10,11 +10,13 @@ import AvatarMark from './AvatarMark.vue'
 import CompatEmoji from './CompatEmoji.vue'
 import GroupAvatar from './GroupAvatar.vue'
 import { isPlainEscape } from '../utils/escape'
+import { clampMenuPosition } from '../utils/menu-position'
 
 const peersStore = usePeersStore()
 const chatStore = useChatStore()
 const groupsStore = useGroupsStore()
 const menu = ref<{ x: number; y: number; conv: ConversationView } | null>(null)
+const menuEl = ref<HTMLDivElement | null>(null)
 
 const nickOf = computed(() => peersStore.nameOf) // 备注优先（F-DISC-9）
 
@@ -30,26 +32,38 @@ function closeMenu(): void {
   menu.value = null
 }
 
+function positionMenu(): void {
+  if (!menu.value || !menuEl.value) return
+  const { width, height } = menuEl.value.getBoundingClientRect()
+  Object.assign(menu.value, clampMenuPosition(
+    menu.value.x, menu.value.y, width, height, window.innerWidth, window.innerHeight
+  ))
+}
+
 // 修复（决议 #128）：右键菜单原来只靠 .pane 的 @click 关闭，点到聊天栏那一侧（另一个组件）
 // 时不会触发，菜单关不掉。改为菜单打开期间挂全局监听——点窗口任意处、再次右键、窗口失焦
 // 都关闭；菜单本体的 @click.stop 保证点菜单项不会被这里误关。
 watch(menu, (open) => {
   if (open) {
+    positionMenu()
     document.addEventListener('click', closeMenu)
     document.addEventListener('contextmenu', closeMenu)
     window.addEventListener('blur', closeMenu)
+    window.addEventListener('resize', positionMenu)
   } else {
     document.removeEventListener('click', closeMenu)
     document.removeEventListener('contextmenu', closeMenu)
     window.removeEventListener('blur', closeMenu)
+    window.removeEventListener('resize', positionMenu)
   }
-})
+}, { flush: 'post' })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onEscape)
   document.removeEventListener('click', closeMenu)
   document.removeEventListener('contextmenu', closeMenu)
   window.removeEventListener('blur', closeMenu)
+  window.removeEventListener('resize', positionMenu)
 })
 
 async function togglePin(): Promise<void> {
@@ -147,6 +161,7 @@ function confirmRemove(): void {
     </ul>
     <div
       v-if="menu"
+      ref="menuEl"
       class="conv-menu"
       :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
       @click.stop
