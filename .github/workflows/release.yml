@@ -17,6 +17,10 @@ env:
   ELECTRON_MIRROR: "https://github.com/electron/electron/releases/download/"
   ELECTRON_BUILDER_BINARIES_MIRROR: "https://github.com/electron-userland/electron-builder-binaries/releases/download/"
 
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  electron_config_cache: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
 jobs:
   linux-debian10-uos20-x64:
     name: Debian 10 / UOS 20 x64
@@ -51,15 +55,24 @@ jobs:
       - name: 校验版本与 tag 一致性
         run: npm run check:version
 
-      - name: 安装 npm 依赖
-        run: npm ci
+      - name: 缓存 Electron 与打包工具下载
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: downloads-v1-${{ github.job }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: downloads-v1-${{ github.job }}-
 
-      - name: 重建 Debian 10 native 模块
-        env:
-          npm_config_build_from_source: "true"
-        run: |
-          npm run rebuild:electron
-          node scripts/check-native-glibc.cjs node_modules/better-sqlite3/build/Release/better_sqlite3.node
+      - name: 缓存 Linux npm 下载
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-buster-v1-${{ github.job }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-buster-v1-${{ github.job }}-
+
+      - name: 安装依赖并只重建一次 Debian 10 native 模块
+        run: bash scripts/ci-install-linux.sh
 
       - name: 五连验证
         shell: bash
@@ -70,14 +83,14 @@ jobs:
           npm run typecheck
           npm run build
           # CI 容器以 root 运行，Electron 启动冒烟需关闭 Chromium sandbox；应用运行时安全配置不变。
-          xvfb-run -a npm run smoke -- --no-sandbox
+          xvfb-run -a npx --no-install cross-env PANTRY_SMOKE=1 electron . --no-sandbox
 
       - name: 构建 Debian 10 / UOS 20 x64 产物
         env:
           # 决议 #60：禁用打包硬链接优化 —— deb 归档内跨 /usr 与 /opt 的硬链接
           # 条目会让 UOS 深度安装器解包失败（"断开的管道"）。
           USE_HARD_LINKS: "false"
-        run: npm run dist:linux
+        run: npx --no-install electron-builder --linux deb:x64 AppImage:x64 --publish never
 
       - name: 校验 Linux 打包 native 模块 glibc 基线
         run: node scripts/check-native-glibc.cjs
@@ -120,6 +133,7 @@ jobs:
         with:
           name: pantry-debian10-uos20-x64
           if-no-files-found: error
+          compression-level: 0
           path: |
             release/Teahouse-*-linux-amd64.deb
             release/Teahouse-*-linux-x86_64.AppImage
@@ -153,6 +167,22 @@ jobs:
       - name: 校验版本与 tag 一致性
         run: npm run check:version
 
+      - name: 缓存 Electron 与打包工具下载
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: downloads-v1-${{ github.job }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: downloads-v1-${{ github.job }}-
+
+      - name: 缓存 Linux npm 下载
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-buster-v1-${{ github.job }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-buster-v1-${{ github.job }}-
+
       # 决议 #206：ffi 1.15.5 每次都要编译 C 扩展 + fpm 全家约 46s，gem 目录跨 run 缓存
       - name: 缓存 fpm gem（决议 #206）
         uses: actions/cache@v4
@@ -162,9 +192,7 @@ jobs:
             /usr/local/bin/fpm
           key: gems-buster-arm64-ffi1.15.5-fpm1.9.3
 
-      # 决议 #206：build_from_source 不再挂整个 step——否则 npm ci 的 postinstall 会先源码
-      # 编译一遍 better-sqlite3，脚本随后又显式 rebuild 一遍（白编译一次，约 45s）。
-      # 强制源码编译只按需作用于 rebuild:electron，见 scripts/ci-linux-arm64.sh。
+      # 决议 #300：安装钩子拆分由共享 ci-install-linux.sh 执行，native 只源码重建一次。
       - name: 在 Debian 10 arm64 runner 容器内验证并打包
         shell: bash
         run: |
@@ -179,6 +207,7 @@ jobs:
         with:
           name: pantry-debian10-uos20-arm64
           if-no-files-found: error
+          compression-level: 0
           path: |
             release/Teahouse-*-linux-arm64.deb
             release/Teahouse-*-linux-arm64.AppImage
@@ -202,6 +231,15 @@ jobs:
       - name: 校验版本与 tag 一致性
         run: npm run check:version
 
+      - name: 缓存 Electron 与打包工具下载
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: downloads-v1-${{ github.job }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: downloads-v1-${{ github.job }}-
+
       - name: 安装 npm 依赖
         run: npm ci
 
@@ -221,10 +259,10 @@ jobs:
           Invoke-Checked npm @('run', 'test:db')
           Invoke-Checked npm @('run', 'typecheck')
           Invoke-Checked npm @('run', 'build')
-          Invoke-Checked npm @('run', 'smoke')
+          Invoke-Checked npx @('--no-install', 'cross-env', 'PANTRY_SMOKE=1', 'electron', '.')
 
       - name: 构建 Win7 x64 产物
-        run: npm run dist:win
+        run: npx --no-install electron-builder --win --x64 --publish never
 
       - name: 生成 SHA-256 清单
         shell: pwsh
@@ -247,6 +285,7 @@ jobs:
         with:
           name: pantry-win7-x64
           if-no-files-found: error
+          compression-level: 0
           path: |
             release/Teahouse-*-win-x64-setup.exe
             release/Teahouse-*-win-x64-portable.exe
@@ -270,6 +309,15 @@ jobs:
       - name: 校验版本与 tag 一致性
         run: npm run check:version
 
+      - name: 缓存 Electron 与打包工具下载
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: downloads-v1-${{ github.job }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: downloads-v1-${{ github.job }}-
+
       - name: 安装 npm 依赖
         run: npm ci
 
@@ -289,7 +337,7 @@ jobs:
           Invoke-Checked npm @('run', 'test:db')
           Invoke-Checked npm @('run', 'typecheck')
           Invoke-Checked npm @('run', 'build')
-          Invoke-Checked npm @('run', 'smoke')
+          Invoke-Checked npx @('--no-install', 'cross-env', 'PANTRY_SMOKE=1', 'electron', '.')
 
       # npm ci 的 postinstall 先生成 runner 可执行的 x64 native 模块，五连验证完成后
       # 再明确重建为 ia32；electron-builder 已关闭 npmRebuild，打包时会原样带入该模块。
@@ -303,7 +351,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: 构建 Win7 ia32 产物
-        run: npm run dist:win:ia32
+        run: npx --no-install electron-builder --win --ia32 --publish never
 
       - name: 校验打包后的 ia32 native 模块
         shell: pwsh
@@ -339,6 +387,7 @@ jobs:
         with:
           name: pantry-win7-ia32
           if-no-files-found: error
+          compression-level: 0
           path: |
             release/Teahouse-*-win-ia32-setup.exe
             release/Teahouse-*-win-ia32-portable.exe
@@ -362,6 +411,15 @@ jobs:
       - name: 校验版本与 tag 一致性
         run: npm run check:version
 
+      - name: 缓存 Electron 与打包工具下载
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: downloads-v1-${{ github.job }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: downloads-v1-${{ github.job }}-
+
       - name: 安装 npm 依赖
         run: npm ci
 
@@ -373,10 +431,10 @@ jobs:
           npm run test:db
           npm run typecheck
           npm run build
-          npm run smoke
+          npx --no-install cross-env PANTRY_SMOKE=1 electron .
 
       - name: 构建 macOS arm64 产物
-        run: npm run dist:mac
+        run: npx --no-install electron-builder --mac --publish never
 
       - name: 生成 SHA-256 清单
         shell: bash
@@ -397,6 +455,7 @@ jobs:
         with:
           name: pantry-mac-arm64
           if-no-files-found: error
+          compression-level: 0
           path: |
             release/Teahouse-*-mac-arm64.dmg
             release/Teahouse-*-mac-arm64.zip

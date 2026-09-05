@@ -4,7 +4,7 @@
 
 This is the English current-state handoff for developers and coding agents. Read it together with the [Contributing guide](../../CONTRIBUTING.en.md) and any local automation policy included in your development checkout. The Chinese handoff keeps the complete chronological release notes; `git log` remains authoritative for current implementation history.
 
-Last updated: 2026-09-05 for **v0.54.9** (decision #299, thumbnail concurrency; second September batch OPT-26–28 complete). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
+Last updated: 2026-09-05 for **v0.54.10** (decision #300, CI packaging performance; second September batch OPT-26–28 complete). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
 
 ## 0. Reading order
 
@@ -127,3 +127,5 @@ Neiwangtong compatibility (#194–#196) is a design-only long-term item. Decisio
 - A macOS Electron extraction failure may require `ditto` and a newline-free `path.txt`; see [Contributing](../../CONTRIBUTING.en.md#troubleshooting).
 - Migrations append new entries only. Check existing schema before adding a table or column and run the Electron-ABI database self-test.
 - Do not use `npm audit fix --force`; known tool/Electron advisories are handled through runtime isolation, no remote content, allowlisted input, and the fixed Windows 7 baseline.
+
+CI decision #300: Linux explicitly restores required install hooks and builds better-sqlite3 once through `scripts/ci-install-linux.sh`. All five jobs reuse one application build for smoke and packaging, cache downloads per job, and avoid artifact recompression. Triggers and validation gates remain unchanged.

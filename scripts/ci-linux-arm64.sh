@@ -16,20 +16,14 @@ apt-get install -y --no-install-recommends \
   libdrm2 libx11-xcb1
 rm -rf /var/lib/apt/lists/*
 
-# npm ci 阶段不强制源码编译（决议 #206）：postinstall 的 @electron/rebuild 走 prebuilt
-# （无 arm64 prebuilt 时自动回退源码编译，不会更糟）；GLIBC 基线由下面的显式
-# 强制源码 rebuild + check-native-glibc 校验保证，与 x64 job 的步骤划分对齐。
-npm ci
-
-npm_config_build_from_source=true npm run rebuild:electron
-node scripts/check-native-glibc.cjs node_modules/better-sqlite3/build/Release/better_sqlite3.node
+bash scripts/ci-install-linux.sh
 
 npm test
 npm run test:db
 npm run typecheck
 npm run build
 # CI 容器以 root 运行，Electron 启动冒烟需关闭 Chromium sandbox；应用运行时安全配置不变。
-xvfb-run -a npm run smoke -- --no-sandbox
+xvfb-run -a npx --no-install cross-env PANTRY_SMOKE=1 electron . --no-sandbox
 
 # gem 缓存命中（release.yml 的 actions/cache）时跳过安装（决议 #206）
 if command -v fpm >/dev/null 2>&1 && fpm --version 2>/dev/null | grep -q '^1\.9\.3$'; then
@@ -38,7 +32,7 @@ else
   gem install --no-document ffi -v 1.15.5
   gem install --no-document fpm -v 1.9.3
 fi
-USE_SYSTEM_FPM=true USE_HARD_LINKS=false npm run dist:linux:arm64
+USE_SYSTEM_FPM=true USE_HARD_LINKS=false npx --no-install electron-builder --linux deb:arm64 AppImage:arm64 --publish never
 
 native=$(find release -path '*/resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node' -print | sort | head -1)
 if [ -z "$native" ]; then

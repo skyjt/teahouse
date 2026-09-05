@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.54.9 bounded thumbnail generation; Neiwangtong compatibility remains paused by decision #199 |
+| Status | Current for v0.54.10 CI packaging performance; Neiwangtong compatibility remains paused by decision #199 |
 | Updated | 2026-09-05 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
@@ -167,6 +167,7 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 | #297 | OPT-26: global FTS query | One MATCH preserves text/PK counts and ordering while obtaining the newest seq across all matching kinds. Read summaries through the existing index; non-unique seq values use the original MATCH lookup. Keep tokenizer, LIKE escaping, sorting/limits, old databases, schema, and dependencies intact. Ship as v0.54.7. |
 | #298 | OPT-27: inactive caches | Keep at most 10 inactive conversation snapshots totaling 3000 messages, evicting oldest whole snapshots and their indexes. Protect the active conversation and pending removal undo window; reload latest/history from main and reject stale page results. Retain active transfers and component-referenced states, cap unused terminal states at 200, and release terminal speed samples. Preserve realtime precedence, unread state, forwarding/retry, persistent data, and platform paths. Ship as v0.54.8. |
 | #299 | OPT-28: thumbnail concurrency | Bound the near-viewport thumbnail pipeline to 4 hardware-rendered or 2 software/unknown-profile jobs. Same-ID images share work; leaving the near viewport, rebinding, or unmounting releases a demand, and unstarted jobs with no remaining demand are discarded. Running jobs complete and release their slots. Reuse the existing 512-entry LRU for completed URLs, preserving cache parameters, animation/small-image/original fallbacks, the 480px margin, viewer/OCR/pixel guards, and existing protocol/IPC/database/dependencies. Ship as v0.54.9. |
+| #300 | CI packaging performance | Linux installs dependencies without automatic lifecycle hooks, explicitly restores required non-native setup, and source-builds better-sqlite3 once on Debian 10. Each platform builds the application once and reuses it for smoke and packaging. Cache downloads per platform/job and disable artifact recompression. Keep all validation, triggers, five platforms, 15 assets, and compatibility baselines. Ship as v0.54.10. |
 
 ## 9. Open items
 

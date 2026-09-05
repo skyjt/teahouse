@@ -4,7 +4,7 @@
 
 | |                                                                                                                                                                                                              |
 |---|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 状态 | v1.72；缩略图生成并发约束（决议 #299）；v0.54.9 |
+| 状态 | v1.73；CI 打包优化（决议 #300）；v0.54.10 |
 | 日期 | 2026-09-05                                                                                                                                                                                                   |
 | 关系 | 上游：[requirements.md](requirements.md)（功能）、[protocol.md](protocol.md)（协议）、[ui-design.md](ui-design.md)（界面）；硬约束：根 README「开发红线」（Electron 22.3.27 / Chrome 108 / Node 16.17 焊死） |
 
@@ -322,6 +322,8 @@ media/avatars/...   # 本机、联系人或群引用的受管 192×192 WebP 头�
 
 ## 10. 构建与 CI
 
+- **CI 去重（决议 #300）**：Linux 共用 `scripts/ci-install-linux.sh`，先 `npm ci --ignore-scripts --prefer-offline --no-audit --no-fund`，再仅恢复 electron/esbuild/protobufjs/vue-demi 的安装钩子，最后在 Debian 10 内强制源码重建一次 better-sqlite3；Linux 不需要的 fsevents 安装钩子不执行。测试对照 lockfile 检查安装钩子清单，依赖新增钩子时必须更新。保留 native 原件/包内 GLIBC 校验和 Electron ABI 数据库自测。每个 job 执行一次 `npm run build`，冒烟直接运行现有 `PANTRY_SMOKE` 入口，打包直接调用已安装的 electron-builder；本地 smoke/dist 命令仍会构建。Linux npm 下载及五平台 Electron/打包工具下载走 Actions 缓存，key 按 job、锁文件与安装流程划分，允许同平台下载缓存前缀回退；不缓存 node_modules、native 或 out。下载源沿用仓库设置；上传已压缩安装包使用 `compression-level: 0`。保持现有触发策略、平台/资产矩阵及全部验证。
+
 - electron-builder 要点：`electronVersion: 22.3.27`；win=`nsis`+`portable`（x64 + ia32，决议 #213）；linux=`deb`+`AppImage`（x64 + arm64，决议 #181；Debian 10 / UOS 20 基线）；mac=`dmg`+`zip`（**arm64 / Apple Silicon，决议 #69**；CI `macos-14` 原生打包，未签名/未公证内网自用；Intel x64 / universal 后续专项）；`asar: true` + `asarUnpack: **/better_sqlite3.node`；appId `com.pantry.app`。
 - **productName=`Teahouse`，安装路径全 ASCII（决议 #60）**：Linux 装 `/opt/Teahouse`、Windows 默认 `Teahouse` 目录；显示名经 Linux desktop `Name`、NSIS `shortcutName`、mac `extendInfo` 保持「茶话间」；主进程启动最早处 `app.setName('茶话间')` 固定 userData 与通知名（已有用户数据零迁移）。**Linux 打包必须 `USE_HARD_LINKS=false`**（dist:linux 与 CI 均已内置）：electron-builder 复制硬链接优化会让 deb 出现跨 `/usr`↔`/opt` 硬链接条目，UOS 深度安装器解包报"断开的管道"；窗口图标 extraResources 用独立物理文件 `build/icons/window-icon.png`，CI 解 deb data.tar 校验无硬链接条目、无中文路径。
 - 品牌资源：`build/icons/` 保存可审阅 SVG 源和生成后的 `.png` / `.ico` / `.icns` 打包图标；托盘运行态不依赖文件路径，仍使用内嵌 Data URL，保证开发、打包与 asar 场景一致。
@@ -550,3 +552,5 @@ media/avatars/...   # 本机、联系人或群引用的受管 192×192 WebP 头�
 - 2026-09-05 v1.70 决议 #297：全局搜索单次 FTS 聚合并复用消息索引，非唯一 seq 回退旧查询；协议、数据库版本、依赖保持，版本 **0.54.6 → 0.54.7**。
 - 2026-09-05 v1.71 决议 #298：回收闲置会话列表/索引和未展示的传输终态，保护活动引用与迟到读取；版本 **0.54.7 → 0.54.8**。
 - 2026-09-05 v1.72 决议 #299：缩略图流水线以 2/4 路调度并按近视口需求释放等待任务，复用已有 LRU；版本 **0.54.8 → 0.54.9**。
+
+- 2026-09-05 v1.73 决议 #300：Linux 安装钩子拆分并只源码重建一次，五平台复用一次构建、增加下载缓存并关闭 artifact 重压缩；版本 **0.54.9 → 0.54.10**。

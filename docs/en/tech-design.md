@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.72 for v0.54.9 |
+| Current design | v1.73 for v0.54.10 |
 | Runtime baseline | Electron 22.3.27 / Node 16.17 / Chrome 108 |
 | Upstream | [Requirements](requirements.md), [Protocol](protocol.md), and [UI design](ui-design.md) |
 | Authority | [tech-design.md](../tech-design.md) is the canonical technical design record |
@@ -283,3 +283,5 @@ Network integration binds `127.0.0.1` and uses empty broadcast targets. It must 
 - **2026-09-05, v1.70, decision #297:** one global FTS aggregation with existing indexed summary lookup and legacy fallback for non-unique seq values. Protocol, schema version, and dependencies remain unchanged. Repository version 0.54.6 → **0.54.7**.
 - **2026-09-05, v1.71, decision #298:** bound inactive conversation snapshots/indexes and unused terminal transfer states, protecting active references and pending reads. Repository version 0.54.7 → **0.54.8**.
 - **2026-09-05, v1.72, decision #299:** schedule thumbnail pipelines at 2/4 concurrency and drop undemanded queued work, reusing the existing LRU. Repository version 0.54.8 → **0.54.9**.
+
+- **2026-09-05, v1.73, decision #300:** Linux uses `scripts/ci-install-linux.sh` to run npm ci without hooks, restore electron/esbuild/protobufjs/vue-demi setup, and source-build better-sqlite3 exactly once. Tests check the lifecycle list against the lockfile. Each job builds once and directly runs smoke/packaging; local smoke/dist scripts remain self-contained. Cache only downloads, separated by job, with lockfile keys and same-platform fallback; do not cache node_modules/native/out. Keep the existing download sources and upload compressed installers at compression level 0. All triggers, platform/asset coverage, GLIBC checks, and validation remain. Repository version 0.54.9 → **0.54.10**.
