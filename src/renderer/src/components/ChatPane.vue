@@ -16,6 +16,7 @@ import {
 import { emojiAdvanceWidth, fontOfStyle, setTextMeasurer } from '../utils/emoji-metrics'
 import { emojiToTwemojiCode, twemojiUrl } from '../utils/twemoji-assets'
 import { isImeCompositionKey } from '../utils/ime'
+import { isPlainEscape } from '../utils/escape'
 import {
   TABLE_PASTE_HINT_MS,
   draftWithoutTablePaste,
@@ -393,7 +394,21 @@ function onDocumentPointerDown(event: MouseEvent): void {
   if (showPeerProfile.value && !peerProfileScope.value?.contains(target)) closePeerProfile()
 }
 
+function onEscape(event: KeyboardEvent): void {
+  if (!isPlainEscape(event, inputComposing.value) || document.querySelector('[aria-modal="true"]')) return
+  if (msgMenu.value) msgMenu.value = null
+  else if (showMentionPicker.value) {
+    showMentionPicker.value = false
+    pendingMentionAt.value = null
+  } else if (showEmoji.value) showEmoji.value = false
+  else if (showPk.value) showPk.value = false
+  else if (showPeerProfile.value) closePeerProfile()
+  else return
+  event.preventDefault()
+}
+
 onMounted(async () => {
+  document.addEventListener('keydown', onEscape)
   document.addEventListener('mousedown', onDocumentPointerDown)
   refreshInputFont()
   // 空白字形字体就绪前测得的是系统字符宽——就绪后清缓存重测，镜像槽宽收敛到 1.3em
@@ -428,6 +443,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   rememberConversationScroll()
+  document.removeEventListener('keydown', onEscape)
   bottomKeeper?.disconnect()
   bottomKeeper = null
   document.removeEventListener('mousedown', onDocumentPointerDown)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ConversationView } from '../../../shared/ipc'
 import { usePeersStore } from '../stores/peers'
 import { useChatStore } from '../stores/chat'
@@ -9,6 +9,7 @@ import { splitEmojiText } from '../utils/compat-emoji'
 import AvatarMark from './AvatarMark.vue'
 import CompatEmoji from './CompatEmoji.vue'
 import GroupAvatar from './GroupAvatar.vue'
+import { isPlainEscape } from '../utils/escape'
 
 const peersStore = usePeersStore()
 const chatStore = useChatStore()
@@ -45,6 +46,7 @@ watch(menu, (open) => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('keydown', onEscape)
   document.removeEventListener('click', closeMenu)
   document.removeEventListener('contextmenu', closeMenu)
   window.removeEventListener('blur', closeMenu)
@@ -63,6 +65,14 @@ async function toggleMute(): Promise<void> {
 }
 
 const confirmConv = ref<ConversationView | null>(null)
+
+function onEscape(event: KeyboardEvent): void {
+  if (!isPlainEscape(event) || (!confirmConv.value && !menu.value)) return
+  event.preventDefault()
+  if (confirmConv.value) confirmConv.value = null
+  else closeMenu()
+}
+onMounted(() => document.addEventListener('keydown', onEscape))
 
 const confirmName = computed(() => (confirmConv.value ? convName(confirmConv.value) : ''))
 

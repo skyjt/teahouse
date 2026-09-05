@@ -104,6 +104,8 @@ export const IpcChannels = {
   winIsMaximized: 'win:is-maximized',
   /** 关闭必须走主进程（决议 #59）：DOM window.close() 会绕过 close 事件直接销毁 */
   winClose: 'win:close',
+  /** 主窗 Esc 隐藏（决议 #293），不执行关闭 / 退出流程。 */
+  winHideMain: 'win:hide-main',
   /** Linux JS 拖拽（决议 #52）：CSS 拖拽区在 Linux 不可靠，主进程跟随光标移窗 */
   winBeginDrag: 'win:begin-drag',
   winEndDrag: 'win:end-drag',
@@ -948,6 +950,8 @@ export interface PantryApi {
   onWinMaximizeChanged(listener: (maximized: boolean) => void): () => void
   /** 关闭当前窗口（决议 #59）：走主进程标准 close 流程，主窗会被拦截进托盘 */
   closeWindow(): Promise<void>
+  /** 仅主窗口可调用；托盘不可用时最小化，保留恢复入口。 */
+  hideMainWindow(): Promise<void>
   /** Linux JS 拖拽（决议 #52）：按住拖拽带时主进程跟随光标移窗 */
   beginWindowDrag(): Promise<void>
   endWindowDrag(): Promise<void>

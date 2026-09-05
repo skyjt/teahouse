@@ -291,7 +291,8 @@ const api: PantryApi = {
   onWinMaximizeChanged: (listener) => subscribe<boolean>(IpcEvents.winMaximizeChanged, listener),
   beginWindowDrag: (): Promise<void> => ipcRenderer.invoke(IpcChannels.winBeginDrag),
   endWindowDrag: (): Promise<void> => ipcRenderer.invoke(IpcChannels.winEndDrag),
-  closeWindow: (): Promise<void> => ipcRenderer.invoke(IpcChannels.winClose)
+  closeWindow: (): Promise<void> => ipcRenderer.invoke(IpcChannels.winClose),
+  hideMainWindow: (): Promise<void> => ipcRenderer.invoke(IpcChannels.winHideMain)
 }
 
 contextBridge.exposeInMainWorld('pantry', api)

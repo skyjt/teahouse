@@ -1677,6 +1677,12 @@ if (!gotLock) {
     BrowserWindow.fromWebContents(event.sender)?.close()
   })
 
+  ipcMain.handle(IpcChannels.winHideMain, (event): void => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || !mainWindow.isFocused()) return
+    if (tray) mainWindow.hide()
+    else mainWindow.minimize()
+  })
+
   // Linux JS 拖拽（决议 #52）：CSS 拖拽区在 Linux 命中不可靠（UOS 实测吞点击），
   // 渲染层按住拖拽带时由主进程按光标位置跟随移窗；单鼠标场景同一时刻只有一个拖拽。
   let dragTimer: NodeJS.Timeout | null = null

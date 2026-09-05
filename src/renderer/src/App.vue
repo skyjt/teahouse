@@ -27,6 +27,7 @@ import { useGroupsStore } from './stores/groups'
 import type { PeerView } from '../../shared/ipc'
 import { applyAppearance } from './utils/appearance'
 import { applyPerformanceProfile } from './utils/performance-profile'
+import { isPlainEscape } from './utils/escape'
 import AvatarMark from './components/AvatarMark.vue'
 import CabinetList from './components/CabinetList.vue'
 import CabinetPane from './components/CabinetPane.vue'
@@ -317,12 +318,25 @@ async function confirmRefreshAllUsers(): Promise<void> {
   applyScanProgress(await window.pantry.scanAllRanges())
 }
 
-function onScanConfirmKeydown(event: KeyboardEvent): void {
-  if (!showScanConfirm.value) return
-  if (event.key === 'Escape') {
+let composing = false
+function onCompositionStart(): void { composing = true }
+function onCompositionEnd(): void { composing = false }
+
+function onMainKeydown(event: KeyboardEvent): void {
+  if (!isPlainEscape(event, composing) || showWizard.value || settingsWindowOpen.value) return
+  if (showScanConfirm.value) {
     event.preventDefault()
     cancelScanConfirm()
+    return
   }
+  // document / 控件先消费按键；window 上的弹窗处理器可能后注册，因此先保留弹窗优先权。
+  const hasPopup = [...document.querySelectorAll<HTMLElement>(
+    '[role="dialog"]:not(.update-pop), [role="menu"], .n-base-select-menu'
+  )].some((element) => element.getClientRects().length > 0)
+  if (showGroupCreator.value || hasPopup) return
+  event.preventDefault()
+  if (showUpdatePanel.value) showUpdatePanel.value = false
+  else void window.pantry.hideMainWindow()
 }
 
 onMounted(async () => {
@@ -349,13 +363,19 @@ onMounted(async () => {
   })
   stopScanProgress = window.pantry.onScanProgress(applyScanProgress)
   stopCaptureFailed = window.pantry.onCaptureFailed(showCaptureFailure)
-  document.addEventListener('keydown', onScanConfirmKeydown)
+  window.addEventListener('keydown', onMainKeydown)
+  document.addEventListener('compositionstart', onCompositionStart)
+  document.addEventListener('compositionend', onCompositionEnd)
+  window.addEventListener('blur', onCompositionEnd)
   releaseInitialRailFocus()
 })
 
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
-  document.removeEventListener('keydown', onScanConfirmKeydown)
+  window.removeEventListener('keydown', onMainKeydown)
+  document.removeEventListener('compositionstart', onCompositionStart)
+  document.removeEventListener('compositionend', onCompositionEnd)
+  window.removeEventListener('blur', onCompositionEnd)
   stopSettings?.()
   stopSettingsWindowState?.()
   stopCabinetOpen?.()

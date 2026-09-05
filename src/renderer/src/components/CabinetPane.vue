@@ -4,6 +4,7 @@ import { NButton, NSelect } from 'naive-ui'
 import { SHARE_DIR_MAX_ENTRIES, type ShareMode } from '../../../shared/protocol'
 import { cabinetPeerName, SHARE_MODE_OPTIONS, useCabinetStore } from '../stores/cabinet'
 import { formatBytes } from '../utils/format'
+import { isPlainEscape } from '../utils/escape'
 import AvatarMark from './AvatarMark.vue'
 import FileTypeIcon from './FileTypeIcon.vue'
 import PantryIcon from './PantryIcon.vue'
@@ -77,7 +78,8 @@ function onKeydown(event: KeyboardEvent): void {
   } else if (event.key === 'F5' || (mod && event.key.toLowerCase() === 'r')) {
     event.preventDefault()
     void cabinet.load(cabinet.path)
-  } else if (event.key === 'Escape') {
+  } else if (isPlainEscape(event) && (menu.value.open || cabinet.picked.size > 0)) {
+    event.preventDefault()
     if (menu.value.open) menu.value.open = false
     else cabinet.picked = new Set()
   }
@@ -146,13 +148,21 @@ function closeMenu(): void {
   if (menu.value.open) menu.value.open = false
 }
 
+function onMenuEscape(event: KeyboardEvent): void {
+  if (!menu.value.open || !isPlainEscape(event)) return
+  event.preventDefault()
+  closeMenu()
+}
+
 onMounted(() => {
   void cabinet.init()
   window.addEventListener('click', closeMenu)
+  document.addEventListener('keydown', onMenuEscape)
 })
 
 onUnmounted(() => {
   window.removeEventListener('click', closeMenu)
+  document.removeEventListener('keydown', onMenuEscape)
 })
 </script>
 

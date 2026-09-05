@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NButton, NInput } from 'naive-ui'
 import type { PeerView } from '../../../shared/ipc'
 import { GROUP_MAX_MEMBERS } from '../../../shared/protocol'
@@ -10,6 +10,7 @@ import {
   snapshotGroupMemberIds
 } from '../utils/group-creator'
 import GroupMemberPicker from './GroupMemberPicker.vue'
+import { isPlainEscape } from '../utils/escape'
 
 // 发起讨论组（ui-design §7.1）：搜索选人 → 下一步设置组名 / 管理密码 / 密码提示。
 
@@ -112,6 +113,14 @@ function backOrClose(): void {
   if (step.value === 'settings') step.value = 'members'
   else emit('close')
 }
+
+function onEscape(event: KeyboardEvent): void {
+  if (!isPlainEscape(event)) return
+  event.preventDefault()
+  if (!creating.value) emit('close')
+}
+onMounted(() => document.addEventListener('keydown', onEscape))
+onUnmounted(() => document.removeEventListener('keydown', onEscape))
 </script>
 
 <template>
@@ -120,7 +129,7 @@ function backOrClose(): void {
     @pointerdown="rememberMaskPointerDown"
     @click.self="requestMaskClose"
   >
-    <div class="dialog">
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="发起讨论组">
       <header class="head">
         <h3>发起讨论组</h3>
         <div class="steps">
