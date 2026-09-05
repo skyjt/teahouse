@@ -24,8 +24,10 @@ interface MessageCache {
   list: MessageView[]
   ids: Set<string>
   byId: Map<string, MessageView>
+  lastUsed: number
 }
 
+let cacheUse = 0
 const messageCaches = shallowReactive(new Map<string, MessageCache>())
 const messageRequests = new Map<string, Promise<MessageView | null>>()
 
@@ -33,7 +35,8 @@ function rebuildMessageCache(convId: string, list: MessageView[]): MessageCache 
   const cache: MessageCache = {
     list,
     ids: new Set<string>(),
-    byId: shallowReactive(new Map<string, MessageView>())
+    byId: shallowReactive(new Map<string, MessageView>()),
+    lastUsed: ++cacheUse
   }
   for (const msg of list) {
     cache.ids.add(msg.id)
@@ -296,11 +299,32 @@ export const useChatStore = defineStore('chat', {
     requestConversationScroll(mode: ConversationOpenScrollMode): void {
       this.openScrollMode = mode
       this.openScrollRun += 1
+      const id = this.activeConvId
+      if (id && this.messages[id]) messageCacheFor(id, this.messages[id]).lastUsed = ++cacheUse
+      this.pruneInactiveMessages()
     },
 
     setConversationMessages(convId: string, messages: MessageView[]): void {
       this.messages[convId] = messages
       rebuildMessageCache(convId, this.messages[convId] ?? [])
+      this.pruneInactiveMessages()
+    },
+
+    /** 只释放闲置投影；当前阅读与移除撤回窗口不参与预算（决议 #298）。 */
+    pruneInactiveMessages(): void {
+      const inactive = Object.entries(this.messages)
+        .filter(([id]) => id !== this.activeConvId && id !== this.pendingRemoval?.convId)
+        .map(([id, list]) => ({ id, cache: messageCacheFor(id, list) }))
+        .sort((a, b) => a.cache.lastUsed - b.cache.lastUsed)
+      let count = inactive.length
+      let total = inactive.reduce((sum, item) => sum + item.cache.list.length, 0)
+      for (const { id, cache } of inactive) {
+        if (count <= 10 && total <= 3000) break
+        delete this.messages[id]
+        dropMessageCache(id)
+        count -= 1
+        total -= cache.list.length
+      }
     },
 
     appendConversationMessage(convId: string, msg: MessageView): boolean {
@@ -311,6 +335,7 @@ export const useChatStore = defineStore('chat', {
       const stored = list[list.length - 1]
       cache.ids.add(stored.id)
       cache.byId.set(stored.id, stored)
+      if (convId !== this.activeConvId) this.pruneInactiveMessages()
       return true
     },
 
@@ -416,9 +441,12 @@ export const useChatStore = defineStore('chat', {
     async loadEarlier(): Promise<number> {
       const convId = this.activeConvId
       if (!convId) return 0
-      const list = this.messages[convId] ?? []
+      const run = navigationRun
+      const list = this.messages[convId]
+      if (!list) return 0
       const before = list.length > 0 ? list[0].seq : null
       const earlier = await window.pantry.pageMessages(convId, before, 50)
+      if (run !== navigationRun || this.activeConvId !== convId || this.messages[convId] !== list) return 0
       return this.prependEarlierMessages(convId, earlier)
     },
 

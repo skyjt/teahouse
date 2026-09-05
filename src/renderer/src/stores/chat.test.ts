@@ -107,6 +107,75 @@ describe('引用消息索引与进行中读取去重', () => {
   })
 })
 
+describe('闲置会话缓存边界', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.stubGlobal('window', { pantry: {
+      pageMessages: vi.fn(async (id: string) => Array.from({ length: 50 }, (_, i) => msg(`${id}-${i}`, id, i + 1))),
+      markRead: vi.fn().mockResolvedValue(undefined),
+      getMessageContext: vi.fn(async (id: string, seq: number) => [msg('target', id, seq)])
+    } })
+  })
+  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
+
+  it('100 会话只保留最近 10 个闲置快照，淘汰后最新页和指定历史仍可加载', async () => {
+    const store = useChatStore()
+    for (let i = 0; i < 100; i++) await store.openConv(`group:${i}`)
+    expect(Object.keys(store.messages)).toHaveLength(11)
+    expect(store.getCachedMessage('group:0', 'group:0-0')).toBeUndefined()
+    expect(store.messages['group:89']).toHaveLength(50)
+    await store.openConv('group:0')
+    expect(window.pantry.pageMessages).toHaveBeenLastCalledWith('group:0', null, 50)
+    expect(store.messages['group:0']).toHaveLength(50)
+    expect(store.openScrollMode).toBe('latest')
+    await store.jumpToMessage('group:1', 500, 'target')
+    expect(store.getCachedMessage('group:1', 'target')?.seq).toBe(500)
+    expect(store.highlightId).toBe('target')
+    expect(store.openScrollMode).toBe('target')
+  })
+
+  it('闲置消息总量受限，当前历史和移除撤回项保持完整，外部引用仍可转发', async () => {
+    const store = useChatStore()
+    store.activeConvId = 'group:active'
+    store.setConversationMessages('group:active', Array.from({ length: 5000 }, (_, i) => msg(`a${i}`, 'group:active', i)))
+    store.requestRemoveConversation('group:active', '待撤回')
+    const source = store.messages['group:active'][0]
+    await store.openConv('group:reading')
+    store.setConversationMessages('group:reading', Array.from({ length: 5000 }, (_, i) => msg(`r${i}`, 'group:reading', i)))
+    store.viewingHistory = true
+    for (let i = 0; i < 10; i++) {
+      store.setConversationMessages(`group:idle${i}`, Array.from({ length: 1000 }, (_, j) => msg(`${i}-${j}`, `group:idle${i}`, j)))
+    }
+    expect(Object.keys(store.messages)).toHaveLength(5)
+    expect(store.messages['group:active']).toHaveLength(5000)
+    expect(store.activeMessages).toHaveLength(5000)
+    expect(store.viewingHistory).toBe(true)
+    store.undoRemoveConversation()
+    store.pruneInactiveMessages()
+    expect(store.messages['group:active']).toBeUndefined()
+    expect(source.id).toBe('a0')
+    const forwardMessage = vi.fn().mockResolvedValue({ messages: [], failed: [] })
+    window.pantry.forwardMessage = forwardMessage
+    await store.forward(source.id, [{ type: 'group', id: 'target' }])
+    expect(forwardMessage).toHaveBeenCalledWith('a0', [{ type: 'group', id: 'target' }])
+  })
+
+  it('离开且淘汰后，迟到分页不能复活缓存或改变当前视图', async () => {
+    const store = useChatStore()
+    await store.openConv('group:old')
+    const earlier = deferred<MessageView[]>()
+    vi.mocked(window.pantry.pageMessages).mockReturnValueOnce(earlier.promise)
+    const loading = store.loadEarlier()
+    for (let i = 0; i < 12; i++) await store.openConv(`group:${i}`)
+    earlier.resolve([msg('stale', 'group:old')])
+    expect(await loading).toBe(0)
+    expect(store.messages['group:old']).toBeUndefined()
+    expect(store.activeConvId).toBe('group:11')
+    expect(store.activeMessages).toHaveLength(50)
+  })
+})
+
 describe('chat store 自己发送后的滚动意图', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -369,6 +438,20 @@ describe('未读置读需窗口可见且聚焦（决议 #220）', () => {
 
     msgNewHandler?.(msg('in-2'))
 
+    expect(markRead).not.toHaveBeenCalled()
+  })
+
+  it('淘汰会话收到后台消息时不重新建缓存，也不置读', async () => {
+    const { markRead } = stubEnv({ visibilityState: 'visible', focused: true })
+    const store = useChatStore()
+    await store.init()
+    store.activeConvId = 'group:active'
+    store.convs = [{ ...conv(), unread: 3 }]
+    for (let i = 0; i < 12; i++) store.setConversationMessages(`group:${i}`, [msg(`m${i}`, `group:${i}`)])
+    expect(store.messages['group:0']).toBeUndefined()
+    msgNewHandler?.(msg('background', 'group:0'))
+    expect(store.messages['group:0']).toBeUndefined()
+    expect(store.totalUnread).toBe(3)
     expect(markRead).not.toHaveBeenCalled()
   })
 

@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.54.7 global FTS query optimization; Neiwangtong compatibility remains paused by decision #199 |
+| Status | Current for v0.54.8 inactive conversation and transfer cache bounds; Neiwangtong compatibility remains paused by decision #199 |
 | Updated | 2026-09-05 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
@@ -165,6 +165,7 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 | #295 | OPT-24: global-search lifecycle | Clear debounce timers and invalidate stale requests on query change/unmount. Only the current request updates results, error, and loading state. Preserve 200ms debounce, query categories/order/limits, navigation, and IME behavior; use existing loading/error placeholders and retry on new input. Ship as v0.54.5. |
 | #296 | OPT-25: quote/transfer reads | Quotes use the existing conversation-scoped ID index with reactive append/trim/reload/recall updates. Coalesce same-ID in-flight historical-message and transfer reads; release after success, missing result, or failure and allow retry. Realtime transfer state takes precedence over an earlier read. No additional permanent history cache or protocol/database/state-machine/platform changes. Ship as v0.54.6. |
 | #297 | OPT-26: global FTS query | One MATCH preserves text/PK counts and ordering while obtaining the newest seq across all matching kinds. Read summaries through the existing index; non-unique seq values use the original MATCH lookup. Keep tokenizer, LIKE escaping, sorting/limits, old databases, schema, and dependencies intact. Ship as v0.54.7. |
+| #298 | OPT-27: inactive caches | Keep at most 10 inactive conversation snapshots totaling 3000 messages, evicting oldest whole snapshots and their indexes. Protect the active conversation and pending removal undo window; reload latest/history from main and reject stale page results. Retain active transfers and component-referenced states, cap unused terminal states at 200, and release terminal speed samples. Preserve realtime precedence, unread state, forwarding/retry, persistent data, and platform paths. Ship as v0.54.8. |
 
 ## 9. Open items
 

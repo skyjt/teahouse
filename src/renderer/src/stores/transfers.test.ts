@@ -67,4 +67,62 @@ describe('传输懒读取去重与实时状态优先', () => {
     await store.ensure('t2')
     expect(getTransfer.mock.calls).toEqual([['t1'], ['t2'], ['t1'], ['t2']])
   })
+
+  function liveStore(getTransfer = vi.fn().mockResolvedValue(null)) {
+    let onUpdate!: (view: TransferView) => void
+    vi.stubGlobal('window', { pantry: {
+      getTransfer, onTransferUpdated: (listener: typeof onUpdate) => { onUpdate = listener }
+    } })
+    const store = useTransfersStore()
+    store.init()
+    return { store, push: (view: TransferView) => onUpdate(view) }
+  }
+
+  it('终态仅保留最近 200 条且释放测速，活动传输和共享卡片不被淘汰', () => {
+    const { store, push } = liveStore()
+    push({ ...transfer, transferId: 'active', status: 'accepted', bytesDone: 25 })
+    push({ ...transfer, transferId: 'waiting' })
+    push({ ...transfer, status: 'done' })
+    const releaseA = store.retain('t1')
+    const releaseB = store.retain('t1')
+    releaseA()
+    releaseA()
+    for (let i = 0; i < 1000; i++) push({ ...transfer, transferId: `done${i}`, status: 'done' })
+    expect(Object.keys(store.byId)).toHaveLength(203)
+    expect(store.byId.t1.status).toBe('done')
+    expect(store.byId.active.status).toBe('accepted')
+    expect(store.byId.waiting.status).toBe('offering')
+    expect(Object.keys(store.samples).sort()).toEqual(['active', 'waiting'])
+    expect(store.speed.t1).toBeUndefined()
+    expect(store.references.get('t1')).toBe(1)
+    releaseB()
+    for (let i = 1000; i < 1200; i++) push({ ...transfer, transferId: `done${i}`, status: 'done' })
+    expect(store.byId.t1).toBeUndefined()
+    expect(store.references.size).toBe(0)
+    expect(store.unusedCompleted.size).toBe(200)
+  })
+
+  it('终态推送在旧读取完成前受到保护，回收后可补载并继续重试', async () => {
+    const pending = deferred()
+    const getTransfer = vi.fn().mockReturnValueOnce(pending.promise)
+      .mockResolvedValue({ ...transfer, status: 'failed', retryable: true })
+    const { store, push } = liveStore(getTransfer)
+    const reading = store.ensure('t1')
+    push({ ...transfer, status: 'done' })
+    for (let i = 0; i < 300; i++) push({ ...transfer, transferId: `done${i}`, status: 'done' })
+    expect(store.byId.t1.status).toBe('done')
+    pending.resolve(transfer)
+    await reading
+    expect(store.byId.t1.status).toBe('done')
+    push({ ...transfer, transferId: 'next', status: 'done' })
+    expect(store.byId.t1).toBeUndefined()
+    const release = store.retain('t1')
+    await store.ensure('t1')
+    expect(store.byId.t1.retryable).toBe(true)
+    expect(getTransfer).toHaveBeenCalledTimes(2)
+    push({ ...transfer, status: 'accepted', bytesDone: 50 })
+    release()
+    expect(store.byId.t1.status).toBe('accepted')
+    expect(store.unusedCompleted.has('t1')).toBe(false)
+  })
 })

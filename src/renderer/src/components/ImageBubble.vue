@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import type { MessageView } from '../../../shared/ipc'
 import { RECALL_WINDOW_MS } from '../../../shared/protocol'
 import { imageMimeFromExt } from '../utils/clipboard'
@@ -188,9 +188,9 @@ const failed = computed(() => {
   return s === 'failed' || s === 'canceled' || s === 'declined'
 })
 
-onMounted(() => {
-  if (transferId.value) void transfers.ensure(transferId.value)
-})
+watch(transferId, (id, _previous, onCleanup) => {
+  if (id) onCleanup(transfers.retain(id))
+}, { immediate: true })
 
 onUnmounted(() => {
   clearAddTipTimer()

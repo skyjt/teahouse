@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, watch } from 'vue'
 import type { MessageView, TransferView } from '../../../shared/ipc'
 import { useTransfersStore } from '../stores/transfers'
 import { formatBytes } from '../utils/format'
@@ -208,9 +208,10 @@ const badgeTone = computed(() => {
   return 'muted'
 })
 
-onMounted(() => {
-  for (const id of transferIds.value) void transfers.ensure(id)
-})
+watch(transferIds, (ids, _previous, onCleanup) => {
+  const releases = ids.map((id) => transfers.retain(id))
+  onCleanup(() => releases.forEach((release) => release()))
+}, { immediate: true })
 
 function cancelActiveTransfers(): void {
   for (const id of transferIds.value) transfers.cancel(id)
