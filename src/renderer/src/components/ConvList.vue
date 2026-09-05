@@ -206,12 +206,12 @@ function confirmRemove(): void {
   letter-spacing: 0.01em;
 }
 .list-summary span:last-child {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 500;
 }
 .placeholder {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 13px;
   text-align: center;
   margin-top: 24px;
@@ -324,13 +324,13 @@ function confirmRemove(): void {
 }
 .conv-time {
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--text-2);
   flex-shrink: 0;
 }
 .conv-preview {
   flex: 1;
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

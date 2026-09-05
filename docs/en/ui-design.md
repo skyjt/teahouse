@@ -60,6 +60,8 @@ Global overlays sit above the drag region. Settings is modal relative to the mai
 
 ## 3. Conversation list
 
+Decision #301 / OPT-29: use the existing secondary-text token locally for conversation timestamps, previews, counts and placeholders; contact counts, IPs, offline names and placeholders; search section labels, summaries, organization paths, offline labels and status messages. Preserve primary online text, gray offline avatars/status dots, disabled controls, global tokens, typography, geometry and page zoom.
+
 Each row shows avatar and online dot, display name, latest-message summary, timestamp, and unread badge. Muted unread badges are gray. Pinned conversations appear first on a separate subtle background; remaining rows sort by latest message time.
 
 The selected row uses a weak tea-green material and a 3px inset accent line. Preview text stays secondary. Summaries avoid revealing game outcomes and use semantic labels such as `[Image]`, `[File]`, or `[PK]`.
@@ -248,3 +250,4 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 - **2026-09-05, v1.81, decision #293:** plain Escape hides only the main window. IME composition, modifiers, repeats, consumed events, dialogs, menus, and cabinet selection take precedence. First-run setup and an open settings window block hiding; use minimize if the tray is unavailable. Close preferences and global shortcuts remain intact. Repository version 0.54.2 → **0.54.3**.
 - **2026-09-05, v1.82, decision #294:** keep the measured conversation menu inside the viewport through resize and existing page zoom. Repository version 0.54.3 → **0.54.4**.
 - **2026-09-05, v1.83, decision #295:** isolate stale global-search responses and provide loading/failure feedback. Repository version 0.54.4 → **0.54.5**.
+- **2026-09-05, v1.84, decision #301:** improve list metadata readability using the existing secondary token locally, preserving offline semantics, disabled controls, global tokens and geometry. Version **0.54.10 → 0.54.11**.

@@ -179,7 +179,7 @@ function displayName(peer: PeerView): string {
   letter-spacing: 0.01em;
 }
 .placeholder {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 13px;
   text-align: center;
   margin-top: 24px;
@@ -223,7 +223,7 @@ function displayName(peer: PeerView): string {
 }
 .g-count {
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .peer-avatar {
   width: 32px;
@@ -254,11 +254,11 @@ function displayName(peer: PeerView): string {
   text-overflow: ellipsis;
 }
 .peer-name.dim {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .peer-sub {
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .dot {
   width: 8px;

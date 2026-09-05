@@ -119,7 +119,7 @@ async function openHit(convId: string, seq: number, msgId: string): Promise<void
   overflow-y: auto;
 }
 .placeholder {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 13px;
   text-align: center;
   margin-top: 24px;
@@ -127,7 +127,7 @@ async function openHit(convId: string, seq: number, msgId: string): Promise<void
 .sec {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-3);
+  color: var(--text-2);
   letter-spacing: 0.3px;
   padding: 14px 12px 6px;
 }
@@ -180,11 +180,11 @@ async function openHit(convId: string, seq: number, msgId: string): Promise<void
 .off {
   font-style: normal;
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .s {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
