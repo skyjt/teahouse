@@ -1,6 +1,7 @@
 import type { ObjectDirective } from 'vue'
 import { IMAGE_THUMBNAIL_MAX_EDGE } from '../../../shared/media'
 import { imageMimeFromExt } from '../utils/clipboard'
+import { BoundedLruCache } from '../utils/bounded-cache'
 
 export interface CachedImageBinding {
   transferId: string
@@ -13,11 +14,19 @@ interface CachedImageState {
   loading: boolean
   loaded: boolean
   onLoad: () => void
+  cancel?: () => void
+}
+
+interface PreviewJob {
+  started: boolean
+  listeners: Map<HTMLImageElement, (src: string) => void>
 }
 
 const states = new WeakMap<HTMLImageElement, CachedImageState>()
 const pendingElements = new Map<Element, () => void>()
-const previewJobs = new Map<string, Promise<string>>()
+const previewJobs = new Map<string, PreviewJob>()
+const completedPreviews = new BoundedLruCache<string, string>(512)
+let runningPreviews = 0
 let nearViewportObserver: IntersectionObserver | null = null
 
 export function thumbnailTargetSize(
@@ -38,17 +47,6 @@ function originalUrl(transferId: string): string {
 
 function thumbnailUrl(transferId: string): string {
   return `pantry-thumb://${transferId}`
-}
-
-function rememberJob(key: string, job: Promise<string>): Promise<string> {
-  previewJobs.delete(key)
-  previewJobs.set(key, job)
-  while (previewJobs.size > 512) {
-    const oldest = previewJobs.keys().next().value
-    if (typeof oldest !== 'string') break
-    previewJobs.delete(oldest)
-  }
-  return job
 }
 
 async function encodeThumbnail(
@@ -84,35 +82,39 @@ async function encodeThumbnail(
   }
 }
 
-async function resolvePreview(binding: CachedImageBinding): Promise<string> {
-  const { transferId } = binding
-  if (!binding.cache) return originalUrl(transferId)
-  const key = `thumb:${transferId}`
-  const existing = previewJobs.get(key)
-  if (existing) return existing
-
-  const job = (async () => {
-    try {
-      if (await window.pantry.hasImageThumbnail(transferId)) return thumbnailUrl(transferId)
-      const source = await window.pantry.fetchStickerSource(transferId)
-      if (!source || source.animated) return originalUrl(transferId)
-      if (Math.max(source.width, source.height) <= IMAGE_THUMBNAIL_MAX_EDGE) {
-        return originalUrl(transferId)
-      }
-      const thumbnail = await encodeThumbnail(
-        source.bytes,
-        source.ext,
-        source.width,
-        source.height
-      )
-      if (!thumbnail) return originalUrl(transferId)
-      const cached = await window.pantry.cacheImageThumbnail(transferId, thumbnail)
-      return cached ? thumbnailUrl(transferId) : originalUrl(transferId)
-    } catch {
+async function resolvePreview(transferId: string): Promise<string> {
+  try {
+    if (await window.pantry.hasImageThumbnail(transferId)) return thumbnailUrl(transferId)
+    const source = await window.pantry.fetchStickerSource(transferId)
+    if (!source || source.animated) return originalUrl(transferId)
+    if (Math.max(source.width, source.height) <= IMAGE_THUMBNAIL_MAX_EDGE) {
       return originalUrl(transferId)
     }
-  })()
-  return rememberJob(key, job)
+    const thumbnail = await encodeThumbnail(source.bytes, source.ext, source.width, source.height)
+    if (!thumbnail) return originalUrl(transferId)
+    const cached = await window.pantry.cacheImageThumbnail(transferId, thumbnail)
+    return cached ? thumbnailUrl(transferId) : originalUrl(transferId)
+  } catch {
+    return originalUrl(transferId)
+  }
+}
+
+function drainPreviews(): void {
+  const limit = document.documentElement.dataset.rendering === 'hardware' ? 4 : 2
+  for (const [id, job] of previewJobs) {
+    if (runningPreviews >= limit) break
+    if (job.started) continue
+    job.started = true
+    runningPreviews += 1
+    void resolvePreview(id).then((src) => {
+      completedPreviews.set(id, src)
+      for (const apply of job.listeners.values()) apply(src)
+    }).finally(() => {
+      previewJobs.delete(id)
+      runningPreviews -= 1
+      drainPreviews()
+    })
+  }
 }
 
 function observer(): IntersectionObserver | null {
@@ -121,11 +123,8 @@ function observer(): IntersectionObserver | null {
   nearViewportObserver = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
-        if (!entry.isIntersecting) continue
-        const load = pendingElements.get(entry.target)
-        pendingElements.delete(entry.target)
-        nearViewportObserver?.unobserve(entry.target)
-        load?.()
+        if (entry.isIntersecting) pendingElements.get(entry.target)?.()
+        else states.get(entry.target as HTMLImageElement)?.cancel?.()
       }
     },
     { rootMargin: '480px 0px' }
@@ -138,11 +137,31 @@ function startLoading(element: HTMLImageElement, binding: CachedImageBinding): v
   if (!state || state.loading || state.loaded || !binding.transferId) return
   state.loading = true
   const generation = state.generation
-  void resolvePreview(binding).then((src) => {
+  const apply = (src: string): void => {
     const current = states.get(element)
     if (!current || current.generation !== generation) return
+    current.cancel = undefined
+    pendingElements.delete(element)
+    nearViewportObserver?.unobserve(element)
     element.src = src
-  })
+  }
+  if (!binding.cache) return apply(originalUrl(binding.transferId))
+  const cached = completedPreviews.get(binding.transferId)
+  if (cached) return apply(cached)
+  let job = previewJobs.get(binding.transferId)
+  if (!job) {
+    job = { started: false, listeners: new Map() }
+    previewJobs.set(binding.transferId, job)
+  }
+  job.listeners.set(element, apply)
+  const sharedJob = job
+  state.cancel = () => {
+    sharedJob.listeners.delete(element)
+    if (!sharedJob.started && sharedJob.listeners.size === 0) previewJobs.delete(binding.transferId)
+    state.loading = false
+    state.cancel = undefined
+  }
+  drainPreviews()
 }
 
 function observe(element: HTMLImageElement, binding: CachedImageBinding): void {
@@ -158,6 +177,7 @@ function observe(element: HTMLImageElement, binding: CachedImageBinding): void {
 
 function reset(element: HTMLImageElement, binding: CachedImageBinding): void {
   const previous = states.get(element)
+  previous?.cancel?.()
   if (previous) element.removeEventListener('load', previous.onLoad)
   pendingElements.delete(element)
   nearViewportObserver?.unobserve(element)
@@ -193,6 +213,7 @@ export const vCachedImage: ObjectDirective<HTMLImageElement, CachedImageBinding>
   },
   unmounted(element) {
     const state = states.get(element)
+    state?.cancel?.()
     if (state) element.removeEventListener('load', state.onLoad)
     states.delete(element)
     pendingElements.delete(element)

@@ -4,7 +4,7 @@
 
 | |                                                                                                                                                                                                              |
 |---|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 状态 | v1.71；闲置会话与传输缓存回收（决议 #298）；v0.54.8 |
+| 状态 | v1.72；缩略图生成并发约束（决议 #299）；v0.54.9 |
 | 日期 | 2026-09-05                                                                                                                                                                                                   |
 | 关系 | 上游：[requirements.md](requirements.md)（功能）、[protocol.md](protocol.md)（协议）、[ui-design.md](ui-design.md)（界面）；硬约束：根 README「开发红线」（Electron 22.3.27 / Chrome 108 / Node 16.17 焊死） |
 
@@ -50,6 +50,7 @@ Naive UI 接入约束（决议 #215）：
 - 私聊头部交互（决议 #84/#227）：`ChatPane` 的 `.title-button` 保留完整点击热区与 `focus-visible` 轮廓，用于打开联系人资料浮层；pointer hover / 弹窗激活只修改内部 `.title` 的 `color`，不得给宽按钮增加背景、阴影或 transform 按压反馈。昵称颜色以 150ms 过渡，`prefers-reduced-motion` 下关闭。
 - 消息与文件表面（决议 #228/#231）：`MessageRow` 文字气泡不再叠加 `--highlight-edge`，peer 只保留轻外阴影，mine 无阴影；`FileCard.card` 与文字 `.bubble` 均使用四角 14px。文件类型资源固定为 `renderer/assets/file-types/file-type-atlas.png`（512×512 RGBA、4×4 等分单元格），`FileTypeIcon` 只维护扩展名 → 类型 → atlas 坐标映射，并用 CSS background-position 缩放到请求尺寸。单元格 128px 足以覆盖当前 36px 最大显示位的高 DPI 展示，解码内存由 4 MiB 降至 1 MiB。资源随 renderer 本地打包，不经网络、不新增运行时依赖；PNG 头、类型覆盖和源码约束测试锁定该契约。
 - 滚动媒体加载（决议 #232/#234）：聊天流 `ImageBubble`、聊天记录搜索结果缩略图与表情包网格保留 `<img loading="lazy" decoding="async">`；聊天图片与搜索图片额外通过共享 `IntersectionObserver` 在视口外沿触发预览解析。静态大图先查 `pantry-thumb://<transferId>` 派生缓存，未命中时受限读取原图字节，并用 `createImageBitmap(blob, { resizeWidth, resizeHeight })` 直接得到最长边 320px 的 bitmap，再编码 WebP 写入缓存；GIF、APNG、动画 WebP 及最长边 ≤320px 的图继续走 `pantry-img`。独立图片查看器、截图桌面位图、品牌首屏图与兼容 emoji 保持原加载策略。
+- 缩略图并发（决议 #299）：`cached-image` 对缓存检查、原图字节读取、缩小解码和写回整段限制并发：`data-rendering=hardware` 为 4，其余为 2；复用既有性能配置，不新增设置。队列按 transferId 合并近视口元素需求；共享观察器在任务等待期间继续监听进出，离开、改绑或卸载只释放本元素需求，无需求的未开始项直接移除，已开始项正常完成并释放资源。完成 URL 放入既有 `BoundedLruCache`（512 项），进行中任务单独保留至结束。保留原 cache 参数、动图/小图与失败原图退路、480px 观察范围、320px WebP 和 128MiB 磁盘预算；查看器、OCR 和像素门禁保持。
 - 图片元数据与缓存边界（决议 #234）：`shared/image-metadata.ts` 以文件头白名单解析 PNG/JPEG/GIF/WebP/BMP 的真实格式、宽高和动画标记，不执行完整像素解码；主进程读取最多 2MiB 头部并按路径 size/mtime 缓存解析结果。内联条件固定为单边 ≤8192px、总像素 ≤3200 万；发送侧不合格内容降级为普通文件，所有 `pantry-img` / OCR / 复制 / 收藏入口复用校验。派生缩略图存入 `userData/data/image-thumbnails/`，文件名由 transferId 的 SHA-256 派生，写入前复核静态 WebP、最长边 ≤320px、字节 ≤1MiB；总量上限 128MiB，读取最多每小时触碰一次 mtime，写入后按 mtime 从旧到新清理。缓存可删除重建、不进 SQLite、不进备份；`pantry-thumb` 每次仍先校验 transfer 与原图授权，避免构造 ID 越权读取。
 - 图片选择授权（决议 #235）：`file:pick` 继续只服务普通文件 / 文件夹；`img:pick` 固定使用 `openFile + multiSelections` 和 PNG/JPG/JPEG/GIF/WebP/BMP 对话框过滤器。主进程收到对话框结果后再次通过 `IMAGE_FILE_EXTENSIONS` 白名单过滤，再写入 `PathGrantStore`；renderer 的发送图片按钮只调用 `pickImages -> img:offer-path`，不接入普通文件发送分支。实际文件内容继续由决议 #234 的暂存后元数据门禁复核。
 - 文件主动取消终态（决议 #236）：`FilesService.cancel()` 只在本机存在 outgoing 上下文时把对应消息状态写为 `canceled`，接收侧取消不改消息状态；`finish()` 与 `applyMsgStatus()` 均保护本地主动取消，迟到的 offer ACK 失败、群发聚合结果和数据面异步失败无法覆盖。`MessageView.status` / `MsgRow.status` 扩展本地 `canceled` 联合类型，沿用 SQLite 文本列且无需迁移；线上消息与文件控制协议保持不变。renderer 结合 transfer 方向和消息终态区分“发送取消”与“已取消”。
@@ -548,3 +549,4 @@ media/avatars/...   # 本机、联系人或群引用的受管 192×192 WebP 头�
 - 2026-09-05 v1.69 决议 #296：已有消息索引补足响应式并供引用读取复用；历史消息与传输状态只合并进行中请求，传输实时推送优先。协议、数据库、依赖不变，版本 **0.54.5 → 0.54.6**。
 - 2026-09-05 v1.70 决议 #297：全局搜索单次 FTS 聚合并复用消息索引，非唯一 seq 回退旧查询；协议、数据库版本、依赖保持，版本 **0.54.6 → 0.54.7**。
 - 2026-09-05 v1.71 决议 #298：回收闲置会话列表/索引和未展示的传输终态，保护活动引用与迟到读取；版本 **0.54.7 → 0.54.8**。
+- 2026-09-05 v1.72 决议 #299：缩略图流水线以 2/4 路调度并按近视口需求释放等待任务，复用已有 LRU；版本 **0.54.8 → 0.54.9**。

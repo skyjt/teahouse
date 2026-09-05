@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.71 for v0.54.8 |
+| Current design | v1.72 for v0.54.9 |
 | Runtime baseline | Electron 22.3.27 / Node 16.17 / Chrome 108 |
 | Upstream | [Requirements](requirements.md), [Protocol](protocol.md), and [UI design](ui-design.md) |
 | Authority | [tech-design.md](../tech-design.md) is the canonical technical design record |
@@ -176,6 +176,8 @@ Decision #298 keeps at most 10 inactive conversation snapshots totaling 3000 mes
 
 Media rendering uses validated image metadata, near-viewport observation, a bounded 320px WebP derivative cache, and native lazy/async image behavior. The cache is rebuildable, capped at 128 MiB, and never included in backup.
 
+Decision #299 bounds thumbnail cache checks, source reads, decode, and writes to 4 hardware or 2 software/unknown-profile jobs. Queue entries coalesce same-ID demand. The shared observer keeps tracking waiting elements; viewport exit, rebinding, and unmount release only that element, dropping unstarted jobs with no demand. Running work completes and releases its slot. Completed URLs use the existing 512-entry `BoundedLruCache`; running work remains independently shared until completion. Existing original/animated/small-image fallbacks, cache parameters, dimensions, disk limits, viewer, and OCR gates stay intact.
+
 Windows 7 uses the tested system-font contenteditable composition path. Other systems use the textarea/mirror path. WebContents zoom replaces renderer CSS body zoom so IME/screen coordinates remain in Chromium's native transform chain.
 
 Decision #296 makes the existing message-index container and per-conversation ID maps shallow-reactive for quote lookup. Message objects keep their existing reactivity; index replacement and per-ID changes remain observable. Historical-message and transfer reads coalesce only in-flight promises, released on every outcome. Transfer results fill only absent projections so newer push events win; failed/missing reads can be retried.
@@ -280,3 +282,4 @@ Network integration binds `127.0.0.1` and uses empty broadcast targets. It must 
 - **2026-09-05, v1.69, decision #296:** reuse reactive quote indexes and coalesce in-flight message/transfer reads with realtime transfer precedence. Protocol, database, and dependencies stay unchanged. Repository version 0.54.5 → **0.54.6**.
 - **2026-09-05, v1.70, decision #297:** one global FTS aggregation with existing indexed summary lookup and legacy fallback for non-unique seq values. Protocol, schema version, and dependencies remain unchanged. Repository version 0.54.6 → **0.54.7**.
 - **2026-09-05, v1.71, decision #298:** bound inactive conversation snapshots/indexes and unused terminal transfer states, protecting active references and pending reads. Repository version 0.54.7 → **0.54.8**.
+- **2026-09-05, v1.72, decision #299:** schedule thumbnail pipelines at 2/4 concurrency and drop undemanded queued work, reusing the existing LRU. Repository version 0.54.8 → **0.54.9**.
