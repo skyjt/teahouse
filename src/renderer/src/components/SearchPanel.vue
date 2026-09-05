@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import type { PeerView, SearchResult } from '../../../shared/ipc'
+import { computed } from 'vue'
+import type { PeerView } from '../../../shared/ipc'
 import { usePeersStore } from '../stores/peers'
 import { useChatStore } from '../stores/chat'
 import { useGroupsStore } from '../stores/groups'
 import { listTime } from '../utils/time'
+import { useGlobalSearch } from '../utils/global-search'
 import AvatarMark from './AvatarMark.vue'
 import PantryIcon from './PantryIcon.vue'
 
@@ -16,22 +17,7 @@ const emit = defineEmits<{ navigate: [] }>()
 
 const peersStore = usePeersStore()
 const chatStore = useChatStore()
-const result = ref<SearchResult>({ peers: [], messageGroups: [], files: [] })
-const searching = ref(false)
-
-let timer: ReturnType<typeof setTimeout> | null = null
-watch(
-  () => props.query,
-  (q) => {
-    if (timer) clearTimeout(timer)
-    searching.value = true
-    timer = setTimeout(async () => {
-      result.value = await window.pantry.search(q)
-      searching.value = false
-    }, 200)
-  },
-  { immediate: true }
-)
+const { result, searching, failed } = useGlobalSearch(() => props.query)
 
 const empty = computed(
   () =>
@@ -66,7 +52,9 @@ async function openHit(convId: string, seq: number, msgId: string): Promise<void
 
 <template>
   <div class="pane">
-    <div v-if="empty" class="placeholder">没有找到「{{ props.query }}」相关的内容</div>
+    <div v-if="searching" class="placeholder" role="status">正在搜索…</div>
+    <div v-else-if="failed" class="placeholder" role="status">搜索失败，请重新输入关键词</div>
+    <div v-else-if="empty" class="placeholder">没有找到「{{ props.query }}」相关的内容</div>
     <div v-else class="results">
       <template v-if="result.peers.length > 0">
         <div class="sec">联系人</div>

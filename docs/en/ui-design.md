@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.82 for v0.54.4 |
+| Current design | v1.83 for v0.54.5 |
 | Main-window model | Three columns with Chat, Contacts, and File Cabinet tabs |
 | Authority | [ui-design.md](../ui-design.md) is the canonical UI and interaction record |
 
@@ -142,7 +142,7 @@ Global search groups results into contacts, discussion groups, chat messages, an
 
 Conversation history search opens a large focused panel from the composer toolbar. It defaults to recent records and supports text, image, file, and continuous date-range filters. Image results show thumbnails. Selecting a result restores the conversation and highlights the target message.
 
-Search inputs debounce requests by 200ms and preserve keyboard focus/escape behavior.
+Search inputs debounce requests by 200ms and preserve keyboard focus/escape behavior. Global search shows the existing placeholder style while loading or after failure, with retry on new input. Query changes and unmount clear pending timers and invalidate older responses (decision #295).
 
 ## 7. Key flows
 
@@ -247,3 +247,4 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 - **2026-09-05, v1.80, decision #291:** PR #39 review fixes use one `GroupTextDialog`. Ordinary members reuse the group panel's existing management password when saving either field; success refreshes the group view, failure preserves input, and switching dialogs clears stale feedback. Typography, radii, and the scrim use existing tokens. Repository version 0.54.0 → **0.54.1**.
 - **2026-09-05, v1.81, decision #293:** plain Escape hides only the main window. IME composition, modifiers, repeats, consumed events, dialogs, menus, and cabinet selection take precedence. First-run setup and an open settings window block hiding; use minimize if the tray is unavailable. Close preferences and global shortcuts remain intact. Repository version 0.54.2 → **0.54.3**.
 - **2026-09-05, v1.82, decision #294:** keep the measured conversation menu inside the viewport through resize and existing page zoom. Repository version 0.54.3 → **0.54.4**.
+- **2026-09-05, v1.83, decision #295:** isolate stale global-search responses and provide loading/failure feedback. Repository version 0.54.4 → **0.54.5**.

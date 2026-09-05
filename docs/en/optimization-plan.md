@@ -53,6 +53,7 @@ The codebase currently has bounded transfer streams, backpressure, append-only i
 | OPT-21 | P2 | Standard controls for group/contact profile surfaces | Complete (#233) |
 | OPT-22 | P1 | Image pixel gate and bounded thumbnail cache | Complete (#234) |
 | OPT-23 | P2 | Keep the conversation menu inside the viewport using measured dimensions | Complete (#294), v0.54.4 |
+| OPT-24 | P2 | Clean up global-search debounce and stale requests | Complete (#295), v0.54.5 |
 
 ## 3. Continuing performance constraints
 
@@ -83,3 +84,5 @@ These choices affect product behavior, architecture, or risk and must be scoped 
 - **2026-08-10, decision #285:** added an English current-state status and execution guide. Optimization status and runtime behavior are unchanged. Repository version 0.51.0 → 0.51.1.
 - **2026-09-05, decision #294:** start the user-approved September review batch with OPT-23. Measure and clamp the conversation menu with an 8px CSS viewport margin, reposition on resize, and preserve actions, confirmation/undo, Escape handling, and page zoom. Planned repository version **0.54.4**.
 - **2026-09-05, OPT-23 complete:** 656 tests and all five local checks passed, with loopback-only smoke. Native macOS checks cover bottom-edge menus at 100/110/125%, pin/mute, removal confirmation/undo, and Escape; geometry tests cover all corners and viewport shrink.
+- **2026-09-05, decision #295:** OPT-24 preserves 200ms debounce and query semantics, invalidates stale callbacks on query change/unmount, and adds loading/failure placeholders with retry on new input. Planned version **0.54.5**.
+- **2026-09-05, OPT-24 complete:** 662 tests and all five local checks passed with loopback smoke. Native macOS checks cover loading feedback, offline contact results, query changes, and message-hit navigation.

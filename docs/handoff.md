@@ -3,7 +3,7 @@
 > [简体中文](handoff.md) · [English](en/handoff.md)
 
 > 给接手本项目的任何 AI 代理或开发者。读完本文 + [AGENTS.md](../AGENTS.md) 即可无缝继续开发。
-> 最后更新：2026-09-05（**v0.54.4，决议 #294 会话菜单视口避让**）。仍遵守 Electron 22.3.27 / Node16 / Chrome108 / 纯内网红线；当前状态以 `git log` 与各文档变更记录为准。
+> 最后更新：2026-09-05（**v0.54.5，决议 #295 全局搜索请求清理**）。仍遵守 Electron 22.3.27 / Node16 / Chrome108 / 纯内网红线；当前状态以 `git log` 与各文档变更记录为准。
 > 历史摘要（截至 2026-06-28，**v0.29.6，Debian 10 / UOS 20 arm64 撤掉老版系统 mksquashfs**）：公开仓库统一为 `skyjt/teahouse`，v0.11.4 为发布整理版；v0.12.0 补齐群改名系统提示（#87）与私聊顶部 IP 完整展示（#88）；v0.12.1 修复发送端先整文件预读 SHA-256 再发数据导致 10GB 级文件接受后长时间 0B 的问题；v0.13.x–v0.16.x 打磨文件卡片、关于页、独立图片查看窗口、本地 OCR、品牌 SVG、通知兼容、私聊震动和会话滚动；v0.17.0 新增 `scan-ranges` 网段记录低频同步（#114）；v0.18.0 新增左侧刷新全局用户（#115）；v0.19.x 打磨左侧导航 tooltip / 自己信息卡 / 焦点框（#116–#121）；v0.20.0 完成英文品牌名 Teahouse 更名（#124）；v0.21.x 完成移除会话删除聊天内容、置顶底色、顶栏等高与输入框拖拽、右键菜单关闭、文件卡片对齐、消息缓存索引、高频渲染路径优化和安全扫描报告修复（#125–#138）；v0.22.x 完成 PK 分歧解决与 UI 打磨（#139–#148）；v0.23.x–v0.26.x 完成设置页重组、网段表格、默认目录与图片传输修复；v0.27.x 推进局域网 P2P 自更新，当前已完成发现提示、更新请求协议地基、关于页主动检测 / 索包入口、`purpose:"update"` 更新包隔离接收、`update:request` 向最佳源请求已有本地安装包回传，以及设置-关于检测更新区按方案 A 并入键值行、机制说明收进圆形问号 tooltip、tooltip 上浮防裁切（#166–#173）；v0.28.x 完成私聊文件「直接发送」、拖拽 / 粘贴授权、文件卡 UI 收紧、默认接收目录统一与第三方截图粘贴去重；v0.29.0 新增 Linux arm64 deb/AppImage 发布 job，并让自更新安装包查找按架构匹配；v0.29.1 将 arm64 容器内发布脚本独立为 `scripts/ci-linux-arm64.sh`；v0.29.2 取消 QEMU，Linux arm64 发布 job 改用 GitHub 远程 `ubuntu-22.04-arm` runner + Debian 10 arm64 容器；v0.29.3 安装系统 fpm/mksquashfs 并将 Linux dist 脚本显式限定 `deb/AppImage` 架构；v0.29.4 尝试预装 `ffi 1.17.4`；v0.29.5 改为 `libffi-dev` + Ruby 2.5 兼容的 `ffi 1.15.5`；v0.29.6 撤掉 `USE_SYSTEM_MKSQUASHFS`，避免 Debian 10 老版 mksquashfs 不支持 AppImage `-offset`。
 > 当前补充：2026-07-03（**v0.31.3，密码组群管理入口已修复**）：v0.31.1 修复图片查看器小图窗口最小尺寸；v0.31.2 实现决议 #192，会话列表 / 联系人 / 通知 / 托盘 / 震动等入口默认重载最新 50 条并滚到底部；v0.31.3 实现决议 #193，群成员面板对有管理密码的讨论组改为内嵌密码输入框，改名、添加成员、移出成员均复用该输入并使用行内失败提示。
 > 当前补充：2026-07-09（**v0.32.3 已发布**）：含全局刷新二次确认（#197）与群成员上限 200（#198）。
@@ -81,13 +81,13 @@
 
 1. **[AGENTS.md](../AGENTS.md)** —— 9 条硬性红线（Electron 22.3.27 焊死、纯内网、分层铁律等），违反即错误；
 2. 本文 —— 状态、工作流、下一步；
-3. 设计四件套（按需细读）：[requirements.md](requirements.md)（功能与决议，已至 #294）→ [protocol.md](protocol.md)（主协议 v0.51）→ [ui-design.md](ui-design.md)（界面）→ [tech-design.md](tech-design.md)（选型/分层/库表）；英文当前规范从 [docs/en/README.md](en/README.md) 进入；内网通兼容专项见 [nwt-compat-design.md](nwt-compat-design.md)（**决议 #199：暂缓实现，仅设计待办**）；
+3. 设计四件套（按需细读）：[requirements.md](requirements.md)（功能与决议，已至 #295）→ [protocol.md](protocol.md)（主协议 v0.51）→ [ui-design.md](ui-design.md)（界面）→ [tech-design.md](tech-design.md)（选型/分层/库表）；英文当前规范从 [docs/en/README.md](en/README.md) 进入；内网通兼容专项见 [nwt-compat-design.md](nwt-compat-design.md)（**决议 #199：暂缓实现，仅设计待办**）；
 4. `git log --oneline` —— 提交历史就是完整开发史，每条 commit message 都是一份增量说明。
 
 ## 1. 项目状态一览
 
 纯内网、无服务器、基于 IP 的局域网 IM + 文件传输（Electron 22 / Vue 3 / better-sqlite3）。
-**v0.1–v0.4/P1 主链路已完成，当前代码版本 v0.54.4**。**内网通兼容：仅设计落档，代码未写，决议 #199 暂缓、不排近期**（对照 tech-design §12）。Windows / Debian / UOS 真实打包运行测试留给目标平台执行：
+**v0.1–v0.4/P1 主链路已完成，当前代码版本 v0.54.5**。**内网通兼容：仅设计落档，代码未写，决议 #199 暂缓、不排近期**（对照 tech-design §12）。Windows / Debian / UOS 真实打包运行测试留给目标平台执行：
 
 | 已交付 | 说明 |
 |---|---|
@@ -127,7 +127,7 @@ npm run smoke     # 启动 1.5s 干净退出（PANTRY_SMOKE 钩子，CI 同款�
 ```
 
 - 本机三客户端联调：懒人入口用 `npm run dev:2` 一次拉起前两个、`npm run dev:3` 一次拉起三个；也可分别在三个终端跑 `npm run dev:client1`、`npm run dev:client2`、`npm run dev:client3`。三个实例使用 `/tmp/pantry-dev1..3` 和 `17878/27878/37878` UDP 端口、`17879/27879/37879` TCP 端口。
-- 决策落档：新决议追加到 requirements §9 决议记录 / §11 变更记录（编号已到 #294，续 #295+）；协议改动必须 protocol.md 先行。
+- 决策落档：新决议追加到 requirements §9 决议记录 / §11 变更记录（编号已到 #295，续 #296+）；协议改动必须 protocol.md 先行。
 - 与用户协作：**全程中文**；用户技术方向不在网络/协议——技术细节直接定但落档、**不要追问底层**；产品可感知取舍（功能形态/默认参数）用 2-4 个带推荐的选项问他。
 
 ## 3. 代码地图（src/，分层铁律见 AGENTS.md #7）
