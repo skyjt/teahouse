@@ -74,6 +74,8 @@ export class MsgRepo {
   private readonly nextSeqStmt: DatabaseT.Statement
   private readonly pageStmt: DatabaseT.Statement
   private readonly pageFirstStmt: DatabaseT.Statement
+  private readonly imagePreviousStmt: DatabaseT.Statement
+  private readonly imageNextStmt: DatabaseT.Statement
   private readonly aroundStmt: DatabaseT.Statement
   private readonly statusStmt: DatabaseT.Statement
   private readonly recallStmt: DatabaseT.Statement
@@ -96,6 +98,16 @@ export class MsgRepo {
     this.pageFirstStmt = db.prepare(
       'SELECT * FROM messages WHERE conv_id = ? ORDER BY seq DESC LIMIT ?'
     )
+    this.imagePreviousStmt = db.prepare(`
+      SELECT * FROM messages WHERE conv_id = ? AND seq < ?
+        AND kind = 'image' AND status <> 'recalled' AND file_ref IS NOT NULL
+      ORDER BY seq DESC LIMIT ?
+    `)
+    this.imageNextStmt = db.prepare(`
+      SELECT * FROM messages WHERE conv_id = ? AND seq > ?
+        AND kind = 'image' AND status <> 'recalled' AND file_ref IS NOT NULL
+      ORDER BY seq ASC LIMIT ?
+    `)
     this.aroundStmt = db.prepare(
       'SELECT * FROM messages WHERE conv_id = ? AND seq BETWEEN ? AND ? ORDER BY seq ASC'
     )
@@ -151,6 +163,12 @@ export class MsgRepo {
         : this.pageStmt.all(convId, beforeSeq, limit)
     ) as MsgRow[]
     return rows.reverse()
+  }
+
+  /** 图片导航按消息顺序向指定方向分页，最近的候选在前。 */
+  imagePage(convId: string, seq: number, direction: 'previous' | 'next', limit: number): MsgRow[] {
+    const statement = direction === 'previous' ? this.imagePreviousStmt : this.imageNextStmt
+    return statement.all(convId, seq, limit) as MsgRow[]
   }
 
   updateStatus(msgId: string, status: string): void {

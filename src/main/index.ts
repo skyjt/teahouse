@@ -155,6 +155,7 @@ import { makeEnvelope } from './net/codec'
 import { ChatService } from './services/chat'
 import { ImageOcrResultCache } from './services/image-ocr-cache'
 import { ImagePreviewService } from './services/image-preview'
+import { getImageViewerNavigation } from './services/image-navigation'
 import { AvatarStore } from './services/avatar-store'
 import { AvatarService } from './services/avatars'
 import type { PeerRecord } from './net/peer-registry'
@@ -2626,6 +2627,15 @@ if (!gotLock) {
     if (!media) return false
     openImageViewerWindow(transferId, media.view.name)
     return true
+  })
+
+  ipcMain.handle(IpcChannels.imgViewerNavigation, async (event, transferId: unknown) => {
+    if (typeof transferId !== 'string' || !transferId || transferId.length > 64) return null
+    if (!event.sender.getURL().includes('#/image-viewer?') || !msgRepoRef) return null
+    return getImageViewerNavigation(transferId, msgRepoRef, async (id) => {
+      const media = await managedInlineImageView(id)
+      return media ? { msgId: media.view.msgId, name: media.view.name } : null
+    })
   })
 
   ipcMain.handle(IpcChannels.imgFitViewerWindow, (event, width: unknown, height: unknown): number => {

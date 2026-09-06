@@ -19,6 +19,7 @@ import {
   type ImageOcrResult,
   type ImageOcrSource,
   type ImageSourceBytes,
+  type ImageViewerNavigation,
   type MessageView,
   type MsgStatusEvent,
   type NetState,
@@ -146,6 +147,8 @@ const api: PantryApi = {
     ipcRenderer.invoke(IpcChannels.groupImgOfferPath, groupId, path),
   openImageViewer: (transferId: string): Promise<boolean> =>
     ipcRenderer.invoke(IpcChannels.imgOpenViewer, transferId),
+  getImageViewerNavigation: (transferId: string): Promise<ImageViewerNavigation | null> =>
+    ipcRenderer.invoke(IpcChannels.imgViewerNavigation, transferId),
   fitImageViewerWindow: (width: number, height: number): Promise<number> =>
     ipcRenderer.invoke(IpcChannels.imgFitViewerWindow, width, height),
   getImageOcrSource: (transferId: string): Promise<ImageOcrSource | null> =>

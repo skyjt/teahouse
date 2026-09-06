@@ -4,8 +4,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.54.12 keyboard list actions; Neiwangtong compatibility remains paused by decision #199 |
-| Updated | 2026-09-05 |
+| Status | Current for v0.55.0 conversation image navigation; Neiwangtong compatibility remains paused by decision #199 |
+| Updated | 2026-09-06 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
 ## 1. Product goals
@@ -98,6 +98,7 @@ The v0.51.1 localization applies to repository and release documentation. Applic
 - **State:** outgoing messages show sending, delivered, failed, or waiting for the peer. No read receipt is produced.
 - **Offline queue:** keep messages for seven days, preserve order, cap each target at 200 queued items, and deduplicate by message ID on receipt.
 - **Images:** accept pasted, dragged, or selected images; render a thumbnail and open a validated original. Oversized or invalid inline images become ordinary files.
+- **Conversation image navigation (#303):** the image window shows Previous/Next buttons on the two sides of the canvas. Browse the full local history of the opened private/group conversation in message sequence order, including screenshots and table images. Disable the corresponding button at either end without wrapping. Skip recalled, incomplete incoming, missing or invalid images; exclude stickers and ordinary files, and show each group image message once. History-search images use the same scope. Switching keeps the window bounds and resets image transforms and OCR display; existing arrow-key panning remains. Disable navigation during requests and show retryable failures.
 - **Table paste (#190/#270):** paste table text into the draft and show a small “send as image” choice. Enter sends plain text. Image conversion is explicit. Peers advertising `tbl1` may also receive bounded TSV metadata for a local image/text view toggle.
 - **Discussion groups:** support up to 200 members. Owners appoint administrators; all members may invite contacts; owners and administrators can rename and remove members according to the role matrix. The owner transfers deterministically when leaving. Optional management passwords grant selected legacy management operations. Group metadata changes produce idempotent system messages. Group owners, administrators, or password-holding members can set or clear a group description (≤ 200 characters) and a group announcement (≤ 1024 characters) from the member panel; empty text is omitted from display. Changes broadcast via `group.info`; old packets that omit either field preserve the local known value or default to empty on first receipt. Migration backups preserve both fields.
 - **Group media:** send one offer per online member. Offline members do not enter a file queue. Images up to 10 MiB use the image path; larger images become manual file transfers.
@@ -170,6 +171,7 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 | #300 | CI packaging performance | Linux installs dependencies without automatic lifecycle hooks, explicitly restores required non-native setup, and source-builds better-sqlite3 once on Debian 10. Each platform builds the application once and reuses it for smoke and packaging. Cache downloads per platform/job and disable artifact recompression. Keep all validation, triggers, five platforms, 15 assets, and compatibility baselines. Ship as v0.54.10. |
 | #301 | OPT-29: readable list metadata | Apply the existing secondary-text token locally to conversation times/previews/counts, contact IPs/counts/offline names, search labels/summaries/organization/offline information, and placeholders/status messages. Preserve gray offline semantics, disabled controls, global tokens, geometry, typography, zoom and platform branches. Ship as v0.54.11. |
 | #302 | OPT-30: keyboard list actions | Use native type=button controls for conversations, contact groups/peers and all global-search result categories. Tab/Enter/Space follow native behavior and existing click callbacks, with a local inset focus-visible outline. Preserve double-click chat, context menus, Escape, geometry, font inheritance, truncation, reduced motion and IME/platform branches. Expose expanded/current/contact-status semantics without new global shortcuts. Ship as v0.54.12. |
+| #303 | Conversation image navigation | Add Previous/Next canvas buttons over complete local conversation history in messages.seq order. Reuse managed-media validation, skip unavailable media, deduplicate group transfers by message, keep window bounds, and reset image/OCR state. Add a read-only local IPC without wire/schema/dependency changes. Ship as v0.55.0. |
 
 ## 9. Open items
 

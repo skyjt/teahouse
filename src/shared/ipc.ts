@@ -48,6 +48,7 @@ export const IpcChannels = {
   groupImgSendBytes: 'group-img:send-bytes',
   groupImgOfferPath: 'group-img:offer-path',
   imgOpenViewer: 'img:open-viewer',
+  imgViewerNavigation: 'img:viewer-navigation',
   imgFitViewerWindow: 'img:fit-viewer-window',
   imgOcrSource: 'img:ocr-source',
   imgOcrResultGet: 'img:ocr-result-get',
@@ -317,6 +318,13 @@ export interface TransferView {
   retryable?: boolean
   /** 直接发送入站保存目录使用的发送人目录名。 */
   directPeerName?: string
+}
+
+/** 同一会话相邻的可用图片；边界为 null，不暴露本地路径。 */
+export interface ImageViewerNavigation {
+  name: string
+  previous: string | null
+  next: string | null
 }
 
 /** 图片 OCR 只读源：主进程按 transferId 返回受限字节，不向渲染层暴露本地路径 */
@@ -808,6 +816,8 @@ export interface PantryApi {
   offerGroupImagePath(groupId: string, path: string): Promise<MessageView | null>
   /** 在独立图片窗口中查看，不遮挡主聊天窗口 */
   openImageViewer(transferId: string): Promise<boolean>
+  /** 图片窗口按当前消息查询同一会话的前后图片。 */
+  getImageViewerNavigation(transferId: string): Promise<ImageViewerNavigation | null>
   /** 独立图片窗口按图片自然尺寸适配内容区，返回初始缩放比例 */
   fitImageViewerWindow(width: number, height: number): Promise<number>
   /** 图片窗口 OCR：读取已完成图片的受限字节源，不暴露路径 */

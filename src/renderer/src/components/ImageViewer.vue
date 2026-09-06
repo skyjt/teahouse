@@ -16,8 +16,20 @@ import {
 } from '../utils/image-viewer-geometry'
 import PantryIcon from './PantryIcon.vue'
 
-const props = defineProps<{ src: string; transferId: string; automaticOcr: boolean }>()
-const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{
+  src: string
+  transferId: string
+  automaticOcr: boolean
+  hasPrevious: boolean
+  hasNext: boolean
+  navigating: boolean
+  navigationError: string
+}>()
+const emit = defineEmits<{
+  close: []
+  navigate: [direction: 'previous' | 'next']
+  retryNavigation: []
+}>()
 
 const MIN_ZOOM = 0.005
 const MAX_ZOOM = 6
@@ -51,6 +63,7 @@ let ocrAutoStarted = false
 let ocrCopyTimer: ReturnType<typeof setTimeout> | null = null
 let loadToken = 0
 let ocrToken = 0
+let windowFitted = false
 
 const canUseImage = computed(() => !loading.value && !broken.value)
 const zoomLabel = computed(() => `${Math.round(zoom.value * 100)}%`)
@@ -369,11 +382,11 @@ async function onImageLoad(event: Event): Promise<void> {
   loading.value = false
   broken.value = false
   try {
-    const initialZoom = await window.pantry.fitImageViewerWindow(
-      natural.value.width,
-      natural.value.height
-    )
+    const initialZoom = windowFitted
+      ? fitScale()
+      : await window.pantry.fitImageViewerWindow(natural.value.width, natural.value.height)
     if (token !== loadToken) return
+    windowFitted = true
     zoom.value = clamp(initialZoom, MIN_ZOOM, MAX_ZOOM)
     centerImage()
     viewMode.value = zoom.value < 0.999 ? 'fit' : 'free'
@@ -529,6 +542,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  loadToken += 1
+  resetOcrState()
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('resize', onResize)
 })
@@ -555,6 +570,7 @@ onBeforeUnmount(() => {
         :style="imageStyle"
       >
         <img
+          :key="src"
           :src="src"
           class="full"
           alt="[图片]"
@@ -564,6 +580,33 @@ onBeforeUnmount(() => {
         />
       </div>
     </main>
+
+    <nav class="viewer-navigation" aria-label="聊天图片切换" :aria-busy="navigating">
+      <button
+        class="navigate previous"
+        type="button"
+        title="上一张"
+        aria-label="上一张"
+        :disabled="!hasPrevious || navigating"
+        @click="emit('navigate', 'previous')"
+      >
+        <PantryIcon name="chevron-left" :size="24" />
+      </button>
+      <button
+        class="navigate next"
+        type="button"
+        title="下一张"
+        aria-label="下一张"
+        :disabled="!hasNext || navigating"
+        @click="emit('navigate', 'next')"
+      >
+        <PantryIcon name="chevron-right" :size="24" />
+      </button>
+    </nav>
+    <div v-if="navigationError" class="navigation-error" role="status">
+      {{ navigationError }}
+      <button type="button" :disabled="navigating" @click="emit('retryNavigation')">重试</button>
+    </div>
 
     <section
       v-if="ocrTextPanelOpen"
@@ -660,6 +703,52 @@ onBeforeUnmount(() => {
   color: #f5f7f6;
   background: #111412;
   overflow: hidden;
+}
+.navigate {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: inherit;
+  background: var(--scrim);
+  border: 1px solid var(--offline);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  z-index: 2;
+}
+.navigate.previous { left: 14px; }
+.navigate.next { right: 14px; }
+.navigate:hover:not(:disabled) { background: var(--primary); }
+.navigate:focus-visible,
+.navigation-error button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.navigate:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.navigation-error {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  background: var(--scrim);
+  border-radius: var(--radius-control);
+  font-size: var(--font-sm);
+  z-index: 2;
+}
+.navigation-error button {
+  margin-left: 8px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
 }
 .viewer-menu {
   position: fixed;
@@ -788,9 +877,9 @@ onBeforeUnmount(() => {
 .ocr-panel {
   position: fixed;
   top: 14px;
-  right: 14px;
+  right: 72px;
   bottom: 70px;
-  width: min(420px, calc(100vw - 28px));
+  width: min(420px, calc(100vw - 144px));
   min-height: 220px;
   display: flex;
   flex-direction: column;
@@ -943,9 +1032,9 @@ onBeforeUnmount(() => {
   }
   .ocr-panel {
     top: 10px;
-    right: 10px;
+    right: 72px;
     bottom: 64px;
-    left: 10px;
+    left: 72px;
     width: auto;
   }
 }

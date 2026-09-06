@@ -24,6 +24,7 @@ import { SearchService } from '../services/search'
 import { PorterService } from '../services/porter'
 import { PeerRegistry } from '../net/peer-registry'
 import { verifyGlobalSearch } from './search-selftest'
+import { verifyImageNavigationQueries } from './image-navigation-selftest'
 import type { PeerRecord } from '../net/peer-registry'
 import { LIMITS } from '../../shared/protocol'
 import { readZip, writeStoreZip } from '../util/zip-store'
@@ -72,6 +73,7 @@ const db = openDatabase(join(dir, 'chat.db'))
 try {
   console.log(`[db-selftest] runtime node=${process.versions.node} abi=${process.versions.modules}`)
   verifyGlobalSearch()
+  verifyImageNavigationQueries()
 
   // 1. 迁移就位
   assert.equal(db.pragma('user_version', { simple: true }), 16, '迁移版本应为 16')
