@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.74 for v0.55.0 |
+| Current design | v1.75 for v0.56.0 |
 | Runtime baseline | Electron 22.3.27 / Node 16.17 / Chrome 108 |
 | Upstream | [Requirements](requirements.md), [Protocol](protocol.md), and [UI design](ui-design.md) |
 | Authority | [tech-design.md](../tech-design.md) is the canonical technical design record |
@@ -37,7 +37,9 @@ Dependencies use exact versions. Electron remains exactly 22.3.27. `better-sqlit
 
 ### 1.2 Renderer performance profile
 
-Structural panes use CSS surfaces, inset borders, and controlled shadows. Blur is limited to true overlays. Main process computes `softwareRendering` for Windows 7/Linux and renderer roots use solid overlay surfaces, shorter shadows, and reduced automatic image/OCR work.
+Structural panes use CSS surfaces, inset borders, and controlled shadows. Blur is limited to true overlays. Main process computes `softwareRendering` for Windows 7/Linux and renderer roots use solid overlay surfaces and shorter shadows. Image OCR is manually triggered on every platform (#304).
+
+The image viewer reuses bounded OCR caches and runs uncached PaddleOCR work in one local Worker with one WASM thread. Preprocessing is serialized; image changes cancel active work and closing releases the worker. Each recognized line becomes one transparent native text node fitted to its unpadded detection box. Browser selection handles partial and cross-line copying; zoom reuses the line subtree and updates its parent transform. Empty results remain retryable. Input limits, local models, cache IPC and strict CSP are preserved.
 
 Static and common renderer bundle sizes are checked after every build. Four renderer roots remain independently reachable. The main App static closure budget accounts for File Cabinet and selected Naive UI controls; the common startup closure stays bounded.
 
@@ -287,3 +289,5 @@ Network integration binds `127.0.0.1` and uses empty broadcast targets. It must 
 - **2026-09-05, v1.73, decision #300:** Linux uses `scripts/ci-install-linux.sh` to run npm ci without hooks, restore electron/esbuild/protobufjs/vue-demi setup, and source-build better-sqlite3 exactly once. Tests check the lifecycle list against the lockfile. Each job builds once and directly runs smoke/packaging; local smoke/dist scripts remain self-contained. Cache only downloads, separated by job, with lockfile keys and same-platform fallback; do not cache node_modules/native/out. Keep the existing download sources and upload compressed installers at compression level 0. All triggers, platform/asset coverage, GLIBC checks, and validation remain. Repository version 0.54.9 → **0.54.10**.
 
 - **2026-09-06, v1.74, decision #303:** `MsgRepo` pages image candidates in each direction using the existing `(conv_id, seq)` index. `services/image-navigation.ts` derives the conversation from the validated transfer and message, checks each message once using its primary/fallback transfer IDs and the existing managed-image validator, and stops at the nearest available image. The read-only navigation IPC validates input/window and returns only the name and adjacent transfer IDs. The viewer switches a reactive transfer ID, serializes requests and invalidates stale image/OCR work; only initial loading resizes the window. No wire protocol, schema or dependency changes. Version **0.54.12 → 0.55.0**.
+
+- **2026-09-06, v1.75, decision #304:** use a same-origin local single-threaded Worker for PaddleOCR model loading, detection, recognition and pixel loops. Create it on demand; serialize from preprocessing, terminate active work on cancel/image change/close, and reuse the idle model. Transfer buffers and retain the 2200px input/960px detection limits. Copy crops per row and expose unpadded detection boxes for text positioning; align whole-line token cache validation with the existing 2000-character line bound. ImageTextLayer uses one transparent node per line, measures once, transforms only its parent on zoom, and extracts native Range text per line on copy. Preserve existing cache IPC, wire/schema/dependencies and strict CSP; verify the worker under real Electron22. Version **0.55.0 → 0.56.0**.

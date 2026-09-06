@@ -94,14 +94,13 @@ html[data-rendering='software'] :is(
   .pk-popover,
   .peer-profile-popover,
   .msg-menu,
-  .viewer-menu,
-  .ocr-panel
+  .viewer-menu
 ) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-html[data-rendering='software'] :is(.viewer-menu, .ocr-panel) {
+html[data-rendering='software'] .viewer-menu {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.34);
 }
 

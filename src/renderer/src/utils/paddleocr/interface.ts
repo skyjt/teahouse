@@ -231,3 +231,8 @@ export interface Box {
     /** Height of the box in pixels. */
     height: number;
 }
+
+/** 检测原始文字位置与供识别使用的扩边裁剪位置。 */
+export interface DetectionBox extends Box {
+    textBox: Box;
+}

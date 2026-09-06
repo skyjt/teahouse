@@ -1,6 +1,7 @@
 import { DEFAULT_DETECTION_OPTIONS } from "../constants";
 import type {
     Box,
+    DetectionBox,
     DetectionRuntimeOptions,
     OcrProgress,
     OrtInferenceSession,
@@ -57,7 +58,7 @@ export class DetectionService {
      * Main method to run text detection on an image
      * @param image ArrayBuffer of the image or Canvas
      */
-    async run(image: Image, options: DetectionRunOptions = {}): Promise<Box[]> {
+    async run(image: Image, options: DetectionRunOptions = {}): Promise<DetectionBox[]> {
         const { onProgress, ...runtimeOverrides } = options;
         const runtimeOptions = this.resolveRuntimeOptions(runtimeOverrides);
         const input = await this.preprocessDetection(image, runtimeOptions);
@@ -184,7 +185,7 @@ export class DetectionService {
         detection: Float32Array,
         input: PreprocessDetectionResult,
         runtimeOptions: DetectionRuntimeOptions
-    ): Box[] {
+    ): DetectionBox[] {
         const { dstWidth, dstHeight } = input.resizeParams;
         const greyImage = new Image(
             dstWidth,
@@ -205,7 +206,10 @@ export class DetectionService {
         const finalBoxes = boxes.map((box) => {
             const paddedBox = this.applyPaddingToRect(box, dstWidth, dstHeight, runtimeOptions);
             const finalBox = this.convertToOriginalCoordinates(paddedBox, input.resizeParams);
-            return finalBox;
+            return {
+                ...finalBox,
+                textBox: this.convertToOriginalCoordinates(box, input.resizeParams),
+            };
         });
         return finalBoxes;
     }

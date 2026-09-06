@@ -4,9 +4,11 @@
 
 This is the English current-state handoff for developers and coding agents. Read it together with the [Contributing guide](../../CONTRIBUTING.en.md) and any local automation policy included in your development checkout. The Chinese handoff keeps the complete chronological release notes; `git log` remains authoritative for current implementation history.
 
-Last updated: 2026-09-06 for **v0.55.0** (decision #303, conversation image navigation). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
+Last updated: 2026-09-06 for **v0.56.0** (decision #304, in-image OCR selection). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
 
 Image Viewer now offers Previous/Next canvas buttons across the full local history of the opened conversation, skipping unavailable images and disabling endpoints. Switching keeps window bounds and resets image/OCR state. Wire protocol, database schema, and dependencies are unchanged.
+
+OCR now starts manually on every platform and restores cached results directly as a native transparent text layer over the image. A single local Worker keeps inference off the viewer UI thread and cancels unfinished work on image changes/close. The separate OCR text panel is removed.
 
 ## 0. Reading order
 
@@ -22,7 +24,7 @@ Image Viewer now offers Previous/Next canvas buttons across the full local histo
 
 | Area | State |
 |---|---|
-| Version | 0.55.0 conversation image navigation (decision #303) |
+| Version | 0.56.0 in-image OCR selection (decision #304) |
 | Branch/release base | `main`, previous release tag `v0.53.1` |
 | Core messaging | Private/group text, images, files, stickers, recall, forwarding, mentions, nudge, PK, offline retry |
 | Discovery | Same-subnet broadcast, manual IP/CIDR, gossip, scan-range sharing, confirmed global refresh |

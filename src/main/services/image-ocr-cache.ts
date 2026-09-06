@@ -10,7 +10,7 @@ const MAX_CACHE_KEY_LENGTH = 180
 const MAX_TEXT_LENGTH = 500_000
 const MAX_TOKENS = 20_000
 const MAX_LINES = 5_000
-const MAX_TOKEN_TEXT_LENGTH = 64
+const MAX_TOKEN_TEXT_LENGTH = 2_000
 const MAX_LINE_TEXT_LENGTH = 2_000
 
 export class ImageOcrResultCache {

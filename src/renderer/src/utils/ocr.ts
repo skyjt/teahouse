@@ -1,20 +1,8 @@
 import type { ImageOcrSource } from '../../../shared/ipc'
-import { BoundedLruCache, RetryableAsyncValue } from './bounded-cache'
-import { PaddleOcrService, type OrtModule, type RecognitionResult } from './paddleocr'
-
-export const OCR_AUTO_MAX_PIXELS = 1_500_000
-export const OCR_AUTO_MAX_BYTES = 3 * 1024 * 1024
+import { BoundedLruCache } from './bounded-cache'
 
 // 超大图先降采样：省内存、提速；PaddleOCR 检测内部还会缩到 960，识别用此分辨率裁剪。
 const OCR_MAX_SIDE = 2200
-// PaddleOCR 置信度为 0~1，低于此判为误检丢弃。
-const OCR_MIN_CONFIDENCE = 0.3
-
-// public/ocr/ 下的模型与 onnxruntime wasm —— 由 scripts/prepare-ocr-assets.mjs 就位，纯本地、不联网。
-const OCR_ASSET_BASE = 'ocr/'
-const OCR_DET_MODEL = `${OCR_ASSET_BASE}PP-OCRv6_tiny_det.onnx`
-const OCR_REC_MODEL = `${OCR_ASSET_BASE}PP-OCRv6_tiny_rec.onnx`
-const OCR_DICT_PATH = `${OCR_ASSET_BASE}ppocrv6_dict.txt`
 
 export interface OcrBox {
   x0: number
@@ -58,14 +46,33 @@ interface PreparedImage {
 }
 
 const resultCache = new BoundedLruCache<string, OcrResult>(16)
-const serviceCache = new RetryableAsyncValue<PaddleOcrService>()
+export interface OcrWorkerRequest {
+  id: number
+  assetBase: string
+  image: PreparedImage
+}
+
+export type OcrWorkerResponse =
+  | { type: 'progress'; id: number; progress: number; status: string }
+  | { type: 'result'; id: number; result: OcrResult }
+  | { type: 'error'; id: number }
+
+interface RecognitionTask {
+  id: number
+  cacheKey: string
+  onProgress: ProgressListener
+  resolve: (result: OcrResult) => void
+  reject: (error: Error) => void
+}
+
+let worker: Worker | null = null
+let workerBusy = false
+let activeTask: RecognitionTask | null = null
+let preparingImage: Promise<PreparedImage> | null = null
+let nextTaskId = 0
 
 export function getCachedOcrResult(cacheKey: string): OcrResult | null {
   return resultCache.get(cacheKey) ?? null
-}
-
-export function isAutoOcrCandidate(width: number, height: number, bytes: number): boolean {
-  return width * height <= OCR_AUTO_MAX_PIXELS && bytes <= OCR_AUTO_MAX_BYTES
 }
 
 export function getSelectedOcrText(tokens: OcrToken[], selectedIds: Set<string>): string {
@@ -99,136 +106,124 @@ export function getOcrResultText(result: OcrResult): string {
   return getSelectedOcrText(result.tokens, new Set(result.tokens.map((token) => token.id))).trim()
 }
 
-export async function recognizeImageText(params: {
+export function recognizeImageText(params: {
   cacheKey: string
   source: ImageOcrSource
   naturalWidth: number
   naturalHeight: number
   onProgress: ProgressListener
 }): Promise<OcrResult> {
+  if (activeTask) return Promise.reject(new Error('正在识别其他图片'))
   const cached = resultCache.get(params.cacheKey)
-  if (cached) {
+  if (cached?.text.trim()) {
     params.onProgress(1, 'cached')
-    return cached
+    return Promise.resolve(cached)
   }
 
-  params.onProgress(0, 'preparing image')
-  const prepared = await prepareImageForOcr(
-    params.source.bytes,
-    params.source.name,
-    params.naturalWidth,
-    params.naturalHeight
-  )
-
-  params.onProgress(0.05, 'initializing models')
-  const service = await getService()
-
-  params.onProgress(0.1, 'recognizing text')
-  const results = await service.recognize(
-    { width: prepared.width, height: prepared.height, data: prepared.data },
-    {
-      onProgress: (event) => {
-        const frac = event.progress.total > 0 ? event.progress.current / event.progress.total : 0
-        // 检测占 0.1~0.3，识别占 0.3~0.95
-        const progress = event.type === 'det' ? 0.1 + frac * 0.2 : 0.3 + frac * 0.65
-        params.onProgress(progress, 'recognizing text')
+  // 从异步解码之前占住唯一任务，重复点击不能堆积图片或模型任务。
+  return new Promise((resolve, reject) => {
+    const task: RecognitionTask = { id: ++nextTaskId, cacheKey: params.cacheKey, onProgress: params.onProgress, resolve, reject }
+    activeTask = task
+    void (async () => {
+      params.onProgress(0, 'preparing image')
+      // 原生位图解码无法中断，取消后仍占住预处理槽，下一张等其释放。
+      if (preparingImage) await preparingImage.catch(() => {})
+      if (activeTask !== task) return
+      const preparation = prepareImageForOcr(
+        params.source.bytes, params.source.name, params.naturalWidth, params.naturalHeight,
+        () => activeTask !== task
+      )
+      preparingImage = preparation
+      let prepared: PreparedImage
+      try {
+        prepared = await preparation
+      } finally {
+        if (preparingImage === preparation) preparingImage = null
       }
-    }
-  )
-
-  const result = toOcrResult(results, prepared.scale)
-  resultCache.set(params.cacheKey, result)
-  params.onProgress(1, 'ready')
-  return result
-}
-
-async function getService(): Promise<PaddleOcrService> {
-  return serviceCache.get(createService)
-}
-
-async function createService(): Promise<PaddleOcrService> {
-  // onnxruntime-web：纯本地 wasm，单线程主线程跑（规避 worker / SharedArrayBuffer / COOP-COEP），
-  // wasm 文件由 prepare-ocr-assets 放到 public/ocr/，与渲染入口同源。
-  // 动态 import：把 ort + wasm 切到按需 chunk，首屏不加载；测试加载本模块也不会触发 ort。
-  const ort = await import('onnxruntime-web')
-  ort.env.wasm.wasmPaths = OCR_ASSET_BASE
-  ort.env.wasm.numThreads = 1
-  ort.env.wasm.proxy = false
-
-  const [detBuffer, recBuffer, dictText] = await Promise.all([
-    fetchArrayBuffer(OCR_DET_MODEL),
-    fetchArrayBuffer(OCR_REC_MODEL),
-    fetchText(OCR_DICT_PATH)
-  ])
-
-  // PaddleOCR CTC 约定：index 0 是 blank 占位，字典末尾补一个空格类。
-  const chars = dictText.replace(/\n+$/, '').split('\n')
-  const charactersDictionary = ['', ...chars, ' ']
-
-  return PaddleOcrService.createInstance({
-    ort: ort as unknown as OrtModule,
-    detection: { modelBuffer: detBuffer },
-    recognition: { modelBuffer: recBuffer, charactersDictionary }
+      if (activeTask !== task) return
+      const instance = getWorker()
+      workerBusy = true
+      const request: OcrWorkerRequest = {
+        id: task.id,
+        assetBase: new URL('ocr/', document.baseURI).href,
+        image: prepared
+      }
+      instance.postMessage(request, [prepared.data.buffer])
+    })().catch((error: unknown) => {
+      if (activeTask !== task) return
+      stopWorker()
+      activeTask = null
+      task.reject(error instanceof Error ? error : new Error('OCR 识别失败'))
+    })
   })
 }
 
-async function fetchArrayBuffer(path: string): Promise<ArrayBuffer> {
-  const res = await fetch(path)
-  if (!res.ok) throw new Error(`OCR 资源加载失败：${path}`)
-  return res.arrayBuffer()
+export function cancelImageTextRecognition(): void {
+  const task = activeTask
+  if (!task) return
+  activeTask = null
+  // 解码阶段可保留上一张已闲置的模型；推理中的 Worker 必须终止。
+  if (workerBusy) stopWorker()
+  task.reject(new DOMException('图片文字识别已取消', 'AbortError'))
 }
 
-async function fetchText(path: string): Promise<string> {
-  const res = await fetch(path)
-  if (!res.ok) throw new Error(`OCR 资源加载失败：${path}`)
-  return res.text()
+export function disposeImageTextRecognition(): void {
+  cancelImageTextRecognition()
+  stopWorker()
 }
 
-// PaddleOCR 输出按行（检测框 + 整行文字），转成既有 OcrResult 结构；
-// 当前界面只消费整段 text，token/line 以行粒度填充，保持缓存 IPC 结构完整。
-function toOcrResult(results: RecognitionResult[], scale: number): OcrResult {
-  const divisor = scale > 0 ? scale : 1
-  const tokens: OcrToken[] = []
-  const lines: OcrLine[] = []
-  const textLines: string[] = []
+function stopWorker(): void {
+  worker?.terminate()
+  worker = null
+  workerBusy = false
+}
 
-  let lineIndex = 0
-  for (const item of results) {
-    const text = normalizeText(item.text)
-    if (!text || item.confidence < OCR_MIN_CONFIDENCE) continue
-    // 还原到原图坐标（PaddleOCR 坐标相对降采样后的图）。
-    const bbox: OcrBox = {
-      x0: item.box.x / divisor,
-      y0: item.box.y / divisor,
-      x1: (item.box.x + item.box.width) / divisor,
-      y1: (item.box.y + item.box.height) / divisor
+function getWorker(): Worker {
+  if (worker) return worker
+  // Vite 构建为同源独立文件，不使用 Blob，不需要放宽 worker-src。
+  const instance = new Worker(new URL('./ocr.worker.ts', import.meta.url), { type: 'module' })
+  worker = instance
+  instance.onmessage = ({ data }: MessageEvent<OcrWorkerResponse>) => {
+    const task = activeTask
+    if (worker !== instance || !task || data.id !== task.id) return
+    if (data.type === 'progress') {
+      task.onProgress(data.progress, data.status)
+      return
     }
-    const tokenId = `ocr-${lineIndex}`
-    tokens.push({
-      id: tokenId,
-      text,
-      confidence: Math.round(item.confidence * 100),
-      bbox,
-      lineIndex,
-      wordIndex: 0,
-      tokenIndex: lineIndex
-    })
-    lines.push({ id: `line-${lineIndex}`, text, bbox, tokenIds: [tokenId], lineIndex })
-    textLines.push(text)
-    lineIndex += 1
+    workerBusy = false
+    activeTask = null
+    if (data.type === 'result') {
+      if (data.result.text.trim()) resultCache.set(task.cacheKey, data.result)
+      task.onProgress(1, 'ready')
+      task.resolve(data.result)
+    } else {
+      stopWorker()
+      task.reject(new Error('OCR 识别失败'))
+    }
   }
-
-  return { text: textLines.join('\n'), tokens, lines, scale: 1 }
+  instance.onerror = instance.onmessageerror = () => {
+    if (worker !== instance) return
+    stopWorker()
+    const task = activeTask
+    activeTask = null
+    task?.reject(new Error('OCR 识别失败'))
+  }
+  return instance
 }
 
 async function prepareImageForOcr(
   bytes: ArrayBuffer,
   name: string,
   naturalWidth: number,
-  naturalHeight: number
+  naturalHeight: number,
+  cancelled: () => boolean
 ): Promise<PreparedImage> {
   const blob = new Blob([bytes], { type: mimeFromName(name) })
-  const { source, width: natW, height: natH } = await decodeImage(blob, naturalWidth, naturalHeight)
+  const { source, width: natW, height: natH } = await decodeImage(blob, naturalWidth, naturalHeight, cancelled)
+  if (cancelled()) {
+    if (source instanceof ImageBitmap) source.close()
+    throw new DOMException('图片文字识别已取消', 'AbortError')
+  }
   const longestSide = Math.max(natW, natH) || 1
   const scale = longestSide <= OCR_MAX_SIDE ? 1 : OCR_MAX_SIDE / longestSide
   const width = Math.max(1, Math.round(natW * scale))
@@ -241,21 +236,32 @@ async function prepareImageForOcr(
     if (source instanceof ImageBitmap) source.close()
     throw new Error('OCR 图片预处理失败')
   }
-  ctx.drawImage(source, 0, 0, width, height)
-  if (source instanceof ImageBitmap) source.close()
-  const imageData = ctx.getImageData(0, 0, width, height)
-  return { width, height, data: new Uint8Array(imageData.data.buffer), scale }
+  try {
+    ctx.drawImage(source, 0, 0, width, height)
+    const imageData = ctx.getImageData(0, 0, width, height)
+    return { width, height, data: new Uint8Array(imageData.data.buffer), scale }
+  } finally {
+    if (source instanceof ImageBitmap) source.close()
+    canvas.width = canvas.height = 0
+  }
 }
 
 async function decodeImage(
   blob: Blob,
   fallbackWidth: number,
-  fallbackHeight: number
+  fallbackHeight: number,
+  cancelled: () => boolean
 ): Promise<{ source: ImageBitmap | HTMLImageElement; width: number; height: number }> {
   try {
-    const bitmap = await createImageBitmap(blob)
-    return { source: bitmap, width: bitmap.width, height: bitmap.height }
+    const scale = Math.min(1, OCR_MAX_SIDE / Math.max(fallbackWidth, fallbackHeight))
+    const bitmap = await createImageBitmap(blob, {
+      resizeWidth: Math.max(1, Math.round(fallbackWidth * scale)),
+      resizeHeight: Math.max(1, Math.round(fallbackHeight * scale)),
+      resizeQuality: 'high'
+    })
+    return { source: bitmap, width: fallbackWidth, height: fallbackHeight }
   } catch {
+    if (cancelled()) throw new DOMException('图片文字识别已取消', 'AbortError')
     const image = await loadBlobImage(blob)
     return {
       source: image,
@@ -279,10 +285,6 @@ function loadBlobImage(blob: Blob): Promise<HTMLImageElement> {
     }
     image.src = url
   })
-}
-
-function normalizeText(text: string | undefined): string {
-  return (text ?? '').replace(/\s+/g, ' ').trim()
 }
 
 function shouldInsertSpace(previous: OcrToken | null, next: OcrToken): boolean {

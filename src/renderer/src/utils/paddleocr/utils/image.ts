@@ -86,12 +86,10 @@ export class Image {
             throw new Error("Crop area is out of bounds");
         }
         const croppedData = new Uint8Array(width * height * this.channels);
+        const rowLength = width * this.channels;
         for (let j = 0; j < height; j++) {
-            for (let i = 0; i < width; i++) {
-                const srcIndex = ((y + j) * this.width + (x + i)) * this.channels;
-                const dstIndex = (j * width + i) * this.channels;
-                croppedData.set(this.data.subarray(srcIndex, srcIndex + this.channels), dstIndex);
-            }
+            const srcIndex = ((y + j) * this.width + x) * this.channels;
+            croppedData.set(this.data.subarray(srcIndex, srcIndex + rowLength), j * rowLength);
         }
         return new Image(width, height, this.channels, croppedData);
     }

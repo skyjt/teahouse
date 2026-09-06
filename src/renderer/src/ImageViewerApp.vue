@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import ImageViewer from './components/ImageViewer.vue'
 import type { ImageViewerNavigation } from '../../shared/ipc'
-import { allowsAutomaticOcr, applyPerformanceProfile } from './utils/performance-profile'
+import { applyPerformanceProfile } from './utils/performance-profile'
 
 const params = computed(() => {
   const query = location.hash.includes('?') ? location.hash.slice(location.hash.indexOf('?') + 1) : ''
@@ -15,14 +15,12 @@ const navigation = ref<ImageViewerNavigation | null>(null)
 const navigating = ref(false)
 const navigationError = ref('')
 const runtimeReady = ref(false)
-const automaticOcr = ref(false)
 
 onMounted(async () => {
   void loadNavigation(transferId.value)
   try {
     const info = await window.pantry.getAppInfo()
     applyPerformanceProfile(info)
-    automaticOcr.value = allowsAutomaticOcr(info)
   } finally {
     runtimeReady.value = true
   }
@@ -65,7 +63,6 @@ function closeViewer(): void {
     v-if="transferId && runtimeReady"
     :src="src"
     :transfer-id="transferId"
-    :automatic-ocr="automaticOcr"
     :has-previous="Boolean(navigation?.previous)"
     :has-next="Boolean(navigation?.next)"
     :navigating="navigating"

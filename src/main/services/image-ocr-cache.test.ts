@@ -63,4 +63,14 @@ describe('ImageOcrResultCache', () => {
     expect(normalizeImageOcrResult({ text: 'x', scale: Number.NaN, tokens: [], lines: [] })).toBeNull()
     expect(normalizeImageOcrResult({ text: 'x', scale: 1, tokens: new Array(20_001), lines: [] })).toBeNull()
   })
+
+  it('缓存整行 token 允许超过 64 字，仍拒绝超过 2000 字的输入', () => {
+    const cache = new ImageOcrResultCache()
+    const stored = result('字'.repeat(2_000))
+    stored.tokens[0].text = stored.text
+    expect(cache.set('long', 'long:2200x1000', stored)).toBe(true)
+    expect(cache.get('long', 'long:2200x1000')).toEqual(stored)
+    stored.tokens[0].text += '字'
+    expect(cache.set('oversized', 'oversized:2200x1000', stored)).toBe(false)
+  })
 })

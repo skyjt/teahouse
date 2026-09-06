@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   getOcrResultText,
   getSelectedOcrText,
-  isAutoOcrCandidate,
   type OcrToken
 } from './ocr'
 
@@ -62,9 +61,4 @@ describe('ocr utils', () => {
     expect(getOcrResultText({ text: '', tokens, lines: [], scale: 1 })).toBe('PANTRY OCR\n茶话')
   })
 
-  it('小图片自动 OCR，大图片或大字节走手动', () => {
-    expect(isAutoOcrCandidate(1200, 900, 2 * 1024 * 1024)).toBe(true)
-    expect(isAutoOcrCandidate(2000, 1600, 2 * 1024 * 1024)).toBe(false)
-    expect(isAutoOcrCandidate(1200, 900, 5 * 1024 * 1024)).toBe(false)
-  })
 })
