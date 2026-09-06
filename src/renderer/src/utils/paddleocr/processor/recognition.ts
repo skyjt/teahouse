@@ -1,7 +1,6 @@
 import { DEFAULT_RECOGNITION_OPTIONS, DEFAULT_RECOGNITION_ORDERING_OPTIONS } from "../constants";
 import type {
     Box,
-    DetectionBox,
     OcrProgress,
     OrtInferenceSession,
     OrtModule,
@@ -21,7 +20,7 @@ export interface RecognitionResult {
 export interface SingleRecognitionTask {
     index: number;
     image: Image;
-    box: DetectionBox;
+    box: Box;
     charWhiteSet?: Set<string>;
 }
 
@@ -55,7 +54,7 @@ export class RecognitionService {
      */
     async run(
         image: Image,
-        detection: DetectionBox[],
+        detection: Box[],
         options?: RecognitionOptions
     ): Promise<RecognitionResult[]> {
         const recognitionOptions = this.resolveRuntimeOptions(options?.recognition);
@@ -162,16 +161,16 @@ export class RecognitionService {
             task.charWhiteSet
         );
 
-        return { text: recognizedText, box: box.textBox, confidence };
+        return { text: recognizedText, box, confidence };
     }
 
     /**
      * Sort recognition results by reading order (top to bottom, left to right)
      */
     private sortBoxesByReadingOrder(
-        boxes: DetectionBox[],
+        boxes: Box[],
         orderingOptions: RecognitionOrderingOptions
-    ): DetectionBox[] {
+    ): Box[] {
         if (!orderingOptions.sortByReadingOrder) {
             return [...boxes];
         }

@@ -4,7 +4,7 @@
 
 This is the English current-state handoff for developers and coding agents. Read it together with the [Contributing guide](../../CONTRIBUTING.en.md) and any local automation policy included in your development checkout. The Chinese handoff keeps the complete chronological release notes; `git log` remains authoritative for current implementation history.
 
-Last updated: 2026-09-06 for **v0.56.0** (decision #304, in-image OCR selection). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
+Last updated: 2026-09-06 for **v0.56.1** (decision #305, selection alignment and cursor fixes). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
 
 Image Viewer now offers Previous/Next canvas buttons across the full local history of the opened conversation, skipping unavailable images and disabling endpoints. Switching keeps window bounds and resets image/OCR state. Wire protocol, database schema, and dependencies are unchanged.
 
@@ -24,7 +24,7 @@ OCR now starts manually on every platform and restores cached results directly a
 
 | Area | State |
 |---|---|
-| Version | 0.56.0 in-image OCR selection (decision #304) |
+| Version | 0.56.1 selection alignment and cursor fixes (decision #305) |
 | Branch/release base | `main`, previous release tag `v0.53.1` |
 | Core messaging | Private/group text, images, files, stickers, recall, forwarding, mentions, nudge, PK, offline retry |
 | Discovery | Same-subnet broadcast, manual IP/CIDR, gossip, scan-range sharing, confirmed global refresh |
@@ -133,3 +133,5 @@ Neiwangtong compatibility (#194–#196) is a design-only long-term item. Decisio
 - Do not use `npm audit fix --force`; known tool/Electron advisories are handled through runtime isolation, no remote content, allowlisted input, and the fixed Windows 7 baseline.
 
 CI decision #300: Linux explicitly restores required install hooks and builds better-sqlite3 once through `scripts/ci-install-linux.sh`. All five jobs reuse one application build for smoke and packaging, cache downloads per job, and avoid artifact recompression. Triggers and validation gates remain unchanged.
+
+Decision #305 corrects native selection-box dimensions and keeps a text cursor throughout cross-line dragging, preserving manual OCR and bounded resource usage.

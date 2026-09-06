@@ -28,7 +28,7 @@ describe('OCR 图像处理', () => {
     }
   })
 
-  it('识别继续使用扩边裁剪，返回原始文字框以对齐图片选字层', async () => {
+  it('检测扩边恢复完整字区，识别裁剪与对外框保持一致', async () => {
     const width = 96
     const height = 64
     const detection = new Float32Array(width * height)
@@ -43,9 +43,8 @@ describe('OCR 图像处理', () => {
     const boxes = await detector.run(image)
     expect(boxes).toHaveLength(1)
     const [box] = boxes
-    expect(box.textBox).toEqual({ x: 19, y: 19, width: 32, height: 12 })
-    expect(box.width).toBeGreaterThan(box.textBox.width)
-    expect(box.height).toBeGreaterThan(box.textBox.height)
+    // shrink-map 轮廓为 (19,19,32,12)，既有扩边恢复到完整识别区。
+    expect(box).toEqual({ x: 12, y: 14, width: 46, height: 22 })
     let inputShape: readonly number[] = []
     const recognizer = new RecognitionService(ort, {
       outputNames: ['output'],
@@ -55,7 +54,7 @@ describe('OCR 图像处理', () => {
       }
     }, { charactersDictionary: ['', '茶'] })
     const results = await recognizer.run(image, boxes)
-    expect(inputShape).toEqual([1, 3, 48, Math.round(box.width * 48 / box.height)])
-    expect(results[0]).toMatchObject({ text: '茶茶', box: box.textBox })
+    expect(inputShape).toEqual([1, 3, 48, 100])
+    expect(results[0]).toMatchObject({ text: '茶茶', box: { x: 12, y: 14, width: 46, height: 22 } })
   })
 })

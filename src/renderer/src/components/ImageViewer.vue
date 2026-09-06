@@ -59,6 +59,7 @@ const ocrText = ref('')
 const ocrLines = shallowRef<OcrLine[]>([])
 const textLayerVisible = ref(false)
 const hasTextSelection = ref(false)
+const isSelectingText = ref(false)
 
 let dragStart: DragStart | null = null
 let ocrCopyTimer: ReturnType<typeof setTimeout> | null = null
@@ -310,6 +311,7 @@ function resetOcrState(): void {
   ocrLines.value = []
   textLayerVisible.value = false
   hasTextSelection.value = false
+  isSelectingText.value = false
   clearOcrCopyFeedback()
 }
 
@@ -514,7 +516,7 @@ onBeforeUnmount(() => {
   <div class="viewer" aria-label="图片查看器">
     <main
       class="viewer-stage"
-      :class="{ grabbing: isDragging }"
+      :class="{ grabbing: isDragging, 'selecting-text': isSelectingText }"
       @wheel.prevent="onWheel"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
@@ -548,6 +550,7 @@ onBeforeUnmount(() => {
           :height="natural.height"
           :zoom="zoom"
           @selection-change="hasTextSelection = $event"
+          @selecting-change="isSelectingText = $event"
         />
       </div>
     </main>
@@ -796,6 +799,10 @@ onBeforeUnmount(() => {
 .viewer-stage.grabbing,
 .viewer-stage.grabbing .image-plane {
   cursor: grabbing;
+}
+.viewer-stage.selecting-text,
+.viewer-stage.selecting-text .image-plane {
+  cursor: text;
 }
 .image-plane {
   position: absolute;

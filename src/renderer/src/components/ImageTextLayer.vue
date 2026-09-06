@@ -1,10 +1,19 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { OcrLine } from '../utils/ocr'
-import { layoutImageTextLines, type ImageTextLineLayout } from '../utils/image-text-layer'
+import {
+  getImageTextLineBoxes,
+  IMAGE_TEXT_MEASURE_SIZE,
+  layoutImageTextLines,
+  type ImageTextLineLayout,
+  type ImageTextMetrics
+} from '../utils/image-text-layer'
 
 const props = defineProps<{ lines: OcrLine[]; width: number; height: number; zoom: number }>()
-const emit = defineEmits<{ 'selection-change': [selected: boolean] }>()
+const emit = defineEmits<{
+  'selection-change': [selected: boolean]
+  'selecting-change': [selecting: boolean]
+}>()
 const layerEl = ref<HTMLElement | null>(null)
 const layouts = shallowRef<ImageTextLineLayout[]>([])
 const layerStyle = computed(() => ({
@@ -13,17 +22,86 @@ const layerStyle = computed(() => ({
   transform: `scale(${props.zoom})`
 }))
 
-let measureContext: CanvasRenderingContext2D | null = null
-let fontFamily = ''
 let selectionActive = false
+let selecting = false
+let buildVersion = 0
+let measurementRoot: HTMLElement | null = null
 
-function buildLayouts(): void {
-  const context = measureContext
-  if (!context) return
-  layouts.value = layoutImageTextLines(props.lines, props.width, props.height, (text, fontSize) => {
-    context.font = `${fontSize}px ${fontFamily}`
-    return context.measureText(text).width
+function cancelMeasurement(): void {
+  buildVersion += 1
+  measurementRoot?.remove()
+  measurementRoot = null
+}
+
+async function buildLayouts(): Promise<void> {
+  cancelMeasurement()
+  layouts.value = []
+  const root = layerEl.value
+  if (!root) return
+  const version = buildVersion
+  const lines = getImageTextLineBoxes(props.lines, props.width, props.height)
+  if (!lines.length) return
+  const container = document.createElement('div')
+  container.setAttribute('aria-hidden', 'true')
+  Object.assign(container.style, {
+    position: 'absolute', left: '0', top: '0', visibility: 'hidden', pointerEvents: 'none',
+    width: '0', height: '0', contain: 'strict', overflow: 'hidden',
+    fontFamily: getComputedStyle(root).fontFamily
   })
+  document.body.append(container)
+  measurementRoot = container
+  const metrics = new Map<number, ImageTextMetrics>()
+  try {
+    for (let offset = 0; offset < lines.length; offset += 128) {
+      if (version !== buildVersion) return
+      const batch = lines.slice(offset, offset + 128)
+      const fragment = document.createDocumentFragment()
+      const spans = batch.map((line) => {
+        const span = document.createElement('span')
+        span.textContent = line.text
+        Object.assign(span.style, {
+          position: 'absolute', display: 'block', left: '0', top: '0', whiteSpace: 'pre',
+          fontSize: `${IMAGE_TEXT_MEASURE_SIZE}px`, lineHeight: `${IMAGE_TEXT_MEASURE_SIZE}px`,
+          height: `${IMAGE_TEXT_MEASURE_SIZE}px`, fontWeight: '400', fontStyle: 'normal', letterSpacing: '0'
+        })
+        fragment.append(span)
+        return span
+      })
+      // 一批只写入一次，再集中读取真实 Range；测量容器避开图片的缩放与旋转。
+      container.replaceChildren(fragment)
+      spans.forEach((span, index) => {
+        const element = span.getBoundingClientRect()
+        const range = document.createRange()
+        range.selectNodeContents(span)
+        const text = range.getBoundingClientRect()
+        metrics.set(batch[index].key, {
+          width: text.width, height: text.height,
+          offsetX: text.left - element.left, offsetY: text.top - element.top
+        })
+      })
+      if (offset + 128 < lines.length) await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+    }
+    if (version === buildVersion) layouts.value = layoutImageTextLines(lines, (line) => metrics.get(line.key))
+  } finally {
+    container.remove()
+    if (measurementRoot === container) measurementRoot = null
+  }
+}
+
+function setSelecting(value: boolean): void {
+  if (selecting === value) return
+  selecting = value
+  emit('selecting-change', value)
+}
+
+function onTextPointerDown(event: PointerEvent): void {
+  if (event.button !== 0) return
+  if (!event.shiftKey) clearSelection()
+  setSelecting(true)
+}
+
+function finishSelecting(): void {
+  setSelecting(false)
 }
 
 function ownedSelection(): Selection | null {
@@ -69,6 +147,7 @@ async function copySelection(): Promise<void> {
 }
 
 function clearSelection(): void {
+  finishSelecting()
   ownedSelection()?.removeAllRanges()
   onSelectionChange()
 }
@@ -83,22 +162,26 @@ function onCopy(event: ClipboardEvent): void {
 
 watch([() => props.lines, () => props.width, () => props.height], () => {
   clearSelection()
-  buildLayouts()
+  void buildLayouts()
 })
 
 onMounted(() => {
-  measureContext = document.createElement('canvas').getContext('2d')
-  fontFamily = getComputedStyle(layerEl.value!).fontFamily
-  buildLayouts()
+  void buildLayouts()
   document.addEventListener('selectionchange', onSelectionChange)
   document.addEventListener('copy', onCopy)
+  document.addEventListener('pointerup', finishSelecting, true)
+  document.addEventListener('pointercancel', finishSelecting, true)
+  window.addEventListener('blur', finishSelecting)
 })
 
 onBeforeUnmount(() => {
+  cancelMeasurement()
   clearSelection()
   document.removeEventListener('selectionchange', onSelectionChange)
   document.removeEventListener('copy', onCopy)
-  measureContext = null
+  document.removeEventListener('pointerup', finishSelecting, true)
+  document.removeEventListener('pointercancel', finishSelecting, true)
+  window.removeEventListener('blur', finishSelecting)
 })
 
 defineExpose({ copySelection, clearSelection })
@@ -111,7 +194,7 @@ defineExpose({ copySelection, clearSelection })
     :style="layerStyle"
     role="document"
     aria-label="图片识别文字"
-    @pointerdown.stop
+    @pointerdown.stop="onTextPointerDown"
     @dblclick.stop
   >
     <div v-memo="[layouts]">

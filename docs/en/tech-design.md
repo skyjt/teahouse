@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.75 for v0.56.0 |
+| Current design | v1.76 for v0.56.1 |
 | Runtime baseline | Electron 22.3.27 / Node 16.17 / Chrome 108 |
 | Upstream | [Requirements](requirements.md), [Protocol](protocol.md), and [UI design](ui-design.md) |
 | Authority | [tech-design.md](../tech-design.md) is the canonical technical design record |
@@ -39,7 +39,9 @@ Dependencies use exact versions. Electron remains exactly 22.3.27. `better-sqlit
 
 Structural panes use CSS surfaces, inset borders, and controlled shadows. Blur is limited to true overlays. Main process computes `softwareRendering` for Windows 7/Linux and renderer roots use solid overlay surfaces and shorter shadows. Image OCR is manually triggered on every platform (#304).
 
-The image viewer reuses bounded OCR caches and runs uncached PaddleOCR work in one local Worker with one WASM thread. Preprocessing is serialized; image changes cancel active work and closing releases the worker. Each recognized line becomes one transparent native text node fitted to its unpadded detection box. Browser selection handles partial and cross-line copying; zoom reuses the line subtree and updates its parent transform. Empty results remain retryable. Input limits, local models, cache IPC and strict CSP are preserved.
+Decision #305 restores the existing expanded detection box for both recognition and selection: DB contours describe a shrunken region, so the separate raw textBox output is removed without changing inference thresholds or crop pixels. It calibrates native text selection boxes to OCR line bounds with offsets and two-axis scaling. Measure only during result layout construction, in batches of at most 128 lines with event-loop yields and stale-result cleanup; preserve one node per line and the memoized zoom subtree. Clear an owned selection on non-Shift left pointerdown before native caret placement to prevent text drag-and-drop. Track text-origin gestures at pointerdown and release them on pointerup/cancel, blur or cleanup; the parent canvas keeps a text cursor during selection without pointermove scanning.
+
+The image viewer reuses bounded OCR caches and runs uncached PaddleOCR work in one local Worker with one WASM thread. Preprocessing is serialized; image changes cancel active work and closing releases the worker. Each recognized line becomes one transparent native text node fitted to its existing expanded detection box (#305 corrects the use of raw shrunken contours). Browser selection handles partial and cross-line copying; zoom reuses the line subtree and updates its parent transform. Empty results remain retryable. Input limits, local models, cache IPC and strict CSP are preserved.
 
 Static and common renderer bundle sizes are checked after every build. Four renderer roots remain independently reachable. The main App static closure budget accounts for File Cabinet and selected Naive UI controls; the common startup closure stays bounded.
 
@@ -291,3 +293,5 @@ Network integration binds `127.0.0.1` and uses empty broadcast targets. It must 
 - **2026-09-06, v1.74, decision #303:** `MsgRepo` pages image candidates in each direction using the existing `(conv_id, seq)` index. `services/image-navigation.ts` derives the conversation from the validated transfer and message, checks each message once using its primary/fallback transfer IDs and the existing managed-image validator, and stops at the nearest available image. The read-only navigation IPC validates input/window and returns only the name and adjacent transfer IDs. The viewer switches a reactive transfer ID, serializes requests and invalidates stale image/OCR work; only initial loading resizes the window. No wire protocol, schema or dependency changes. Version **0.54.12 → 0.55.0**.
 
 - **2026-09-06, v1.75, decision #304:** use a same-origin local single-threaded Worker for PaddleOCR model loading, detection, recognition and pixel loops. Create it on demand; serialize from preprocessing, terminate active work on cancel/image change/close, and reuse the idle model. Transfer buffers and retain the 2200px input/960px detection limits. Copy crops per row and expose unpadded detection boxes for text positioning; align whole-line token cache validation with the existing 2000-character line bound. ImageTextLayer uses one transparent node per line, measures once, transforms only its parent on zoom, and extracts native Range text per line on copy. Preserve existing cache IPC, wire/schema/dependencies and strict CSP; verify the worker under real Electron22. Version **0.55.0 → 0.56.0**.
+
+- **2026-09-06, v1.76, decision #305:** calibrate text selection geometry and keep the gesture cursor stable. Version **0.56.0 → 0.56.1**.

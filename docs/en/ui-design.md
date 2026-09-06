@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.87 for v0.56.0 |
+| Current design | v1.88 for v0.56.1 |
 | Main-window model | Three columns with Chat, Contacts, and File Cabinet tabs |
 | Authority | [ui-design.md](../ui-design.md) is the canonical UI and interaction record |
 
@@ -109,6 +109,7 @@ The right side contains conversation options. A group member count opens an over
 ### 5.2 Messages
 
 - Peer and local text bubbles use 14px corners and token colors. Local bubbles use a light tea-green tint.
+- **Selection alignment and gesture cursor (#305):** calibrate native highlight dimensions and offsets against the OCR line bounds. A non-Shift text pointerdown clears the previous local selection before native caret placement, preventing text drag-and-drop while preserving Shift extension and double-click word selection. Dragging from text keeps a text cursor across line gaps and image blank areas until pointer release/cancel, blur or layer cleanup. Blank-area drags still pan.
 - **In-image OCR (#304, superseding the separate result panel):** Recognize Text is manual on every platform and changes to Cancel while working. Completed or cached results use one transparent native text node per detected line, with a visible selection highlight; drag text to select partial/cross-line content and drag blank areas to pan. The layer follows image transforms. Support Ctrl/Cmd+C, Copy Selection (preserving the selection on pointerdown) and Copy All. Escape clears a text selection before closing the viewer. The OCR button toggles the completed text layer; image changes clear it and cancel active work. No separate text dialog.
 - **Image navigation (#303):** center a 44px native Previous/Next chevron button on each side of the dark image canvas, using existing tokens and visible keyboard focus. Browse the complete local conversation history, with disabled endpoints and no wrap. Disable buttons while querying; show failures with retry while retaining the current image. Switching fits the new image inside the existing window, resets transforms/OCR display, and preserves window bounds and existing arrow-key panning. Buttons are separate from the drag stage and text layer.
 - Images load bounded thumbnails near the viewport and open a validated original in Image Viewer.
@@ -262,3 +263,5 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 - **2026-09-06, v1.86, decision #303:** add canvas-side conversation image navigation, disabled endpoints, request/error feedback and stable window bounds. Version **0.54.12 → 0.55.0**.
 
 - **2026-09-06, v1.87, decision #304:** replace the separate OCR result panel with in-image native text selection, manual/cancellable recognition and cache restoration. Version **0.55.0 → 0.56.0**.
+
+- **2026-09-06, v1.88, decision #305:** fix selection-box alignment and cross-line gesture cursor flicker. Version **0.56.0 → 0.56.1**.
