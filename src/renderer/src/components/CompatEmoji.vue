@@ -12,8 +12,8 @@ const src = computed(() => twemojiUrl(emojiToTwemojiCode(props.emoji)))
 
 <template>
   <span class="compat-emoji" :title="label" :aria-label="label">
+    <span :class="{ 'compat-emoji-text': src }" aria-hidden="true">{{ emoji }}</span>
     <img v-if="src" :src="src" alt="" aria-hidden="true" draggable="false" />
-    <span v-else>{{ emoji }}</span>
   </span>
 </template>
 
@@ -21,12 +21,20 @@ const src = computed(() => twemojiUrl(emojiToTwemojiCode(props.emoji)))
 .compat-emoji {
   width: 1.3em;
   height: 1.3em;
-  display: inline-grid;
-  place-items: center;
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+  text-align: center;
   vertical-align: -0.24em;
   line-height: 1;
 }
+.compat-emoji-text {
+  /* 保留原生可选文字；行内排版避免 grid 子项在复制时夹入换行。 */
+  opacity: 0;
+}
 .compat-emoji img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;

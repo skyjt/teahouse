@@ -4,8 +4,8 @@
 
 | |                                                                                                                                                                                                              |
 |---|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 状态 | v1.76；图片选区几何与手势修复（决议 #305）；v0.56.1 |
-| 日期 | 2026-09-06                                                                                                                                                                                                   |
+| 状态 | v1.77；emoji 复制与 Linux 小键盘兼容（决议 #306）；v0.56.2 |
+| 日期 | 2026-09-07                                                                                                                                                                                                   |
 | 关系 | 上游：[requirements.md](requirements.md)（功能）、[protocol.md](protocol.md)（协议）、[ui-design.md](ui-design.md)（界面）；硬约束：根 README「开发红线」（Electron 22.3.27 / Chrome 108 / Node 16.17 焊死） |
 
 ## 1. 选型决策总表
@@ -323,6 +323,13 @@ media/avatars/...   # 本机、联系人或群引用的受管 192×192 WebP 头�
 | 1000 节点报文洪峰/恶意泛洪 | codec 层每源 IP 令牌桶限速 + 总入站队列上限，超限丢弃并计数 |
 | 自更新：从内网节点取可执行包来运行（决议 #166/#181） | 信任内网边界（决议 #5）且**用户确认才装**（非静默）+ SHA-256 完整性（复用传输层 `done` 帧）+ 同平台同架构严格匹配 + 包内版本核对 + 大小上限；纯内网零外网（红线 #5 禁的是外网更新检查 / CDN）。应用更新走平台脚本（nsis per-user 静默装免 UAC、deb 经 pkexec 授权），保留旧包 / 失败回滚；替换正在运行的自身由接力进程在主进程退出后完成；mac 暂缓 |
 
+
+### emoji 复制与 Linux 小键盘兼容（决议 #306）
+
+`CompatEmoji` 使用正常行内透明 Unicode 文本承载选区，SVG 绝对定位覆盖；避免 inline-grid 的子项在 Chromium 108 选区序列化时引入换行。含展示表情的选区经公共 copy 事件仅写纯文本，避免透明样式与本地 SVG 混入富文本剪贴板；input / textarea 保留原生独立选区。Win7 编辑器复用 `editorText` / `selectionRange` 序列化复制与剪切，以原生删除保留 input / 撤销，保持系统字体和原子图片节点。Linux renderer 公共启动入口安装捕获阶段键盘处理，限定可编辑文本 input / textarea、NumLock 开启及 Numpad 数字 / 对应导航值；用 `document.execCommand("insertText")` 走原生编辑事务，成功才阻止后续默认导航，失败保留原事件。使用现有 IME 判定，并排除修饰键、只读、禁用与非输入控件；不向 Windows / macOS 安装处理。
+
+Chromium 108 的 [GTK 事件转换](https://raw.githubusercontent.com/chromium/chromium/108.0.5359.215/ui/gtk/gtk_util.cc) 与 [GTK 编辑命令](https://raw.githubusercontent.com/chromium/chromium/108.0.5359.215/ui/gtk/gtk_key_bindings_handler.cc) 分别读取原始键盘状态并产生编辑行为，故兼容处理也覆盖逻辑 key 已是数字的路径；这是依据源码的故障机制推断，尚无用户 UOS 机器的原始事件样本。NumLock / code 上游信息缺失时不猜测，不接管。
+
 ## 10. 构建与 CI
 
 - **CI 去重（决议 #300）**：Linux 共用 `scripts/ci-install-linux.sh`，先 `npm ci --ignore-scripts --prefer-offline --no-audit --no-fund`，再仅恢复 electron/esbuild/protobufjs/vue-demi 的安装钩子，最后在 Debian 10 内强制源码重建一次 better-sqlite3；Linux 不需要的 fsevents 安装钩子不执行。测试对照 lockfile 检查安装钩子清单，依赖新增钩子时必须更新。保留 native 原件/包内 GLIBC 校验和 Electron ABI 数据库自测。每个 job 执行一次 `npm run build`，冒烟直接运行现有 `PANTRY_SMOKE` 入口，打包直接调用已安装的 electron-builder；本地 smoke/dist 命令仍会构建。Linux npm 下载及五平台 Electron/打包工具下载走 Actions 缓存，key 按 job、锁文件与安装流程划分，允许同平台下载缓存前缀回退；不缓存 node_modules、native 或 out。下载源沿用仓库设置；上传已压缩安装包使用 `compression-level: 0`。保持现有触发策略、平台/资产矩阵及全部验证。
@@ -563,3 +570,5 @@ media/avatars/...   # 本机、联系人或群引用的受管 192×192 WebP 头�
 - 2026-09-06 v1.75 决议 #304：原生透明行文字层，单本地Worker可取消推理、全平台手动识别与结果缓存；版本 **0.55.0 → 0.56.0**。
 
 - 2026-09-06 v1.76 决议 #305：原生文字盒双轴拟合与拖选手势光标收口；版本 **0.56.0 → 0.56.1**。
+
+- 2026-09-07 v1.77 决议 #306：公共 emoji 展示补文本语义、Win7 编辑器按草稿选区复制 / 剪切，Linux 文本输入复用原生编辑事务恢复 NumLock 数字；版本 **0.56.1 → 0.56.2**。

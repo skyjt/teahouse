@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.76 for v0.56.1 |
+| Current design | v1.77 for v0.56.2 |
 | Runtime baseline | Electron 22.3.27 / Node 16.17 / Chrome 108 |
 | Upstream | [Requirements](requirements.md), [Protocol](protocol.md), and [UI design](ui-design.md) |
 | Authority | [tech-design.md](../tech-design.md) is the canonical technical design record |
@@ -295,3 +295,5 @@ Network integration binds `127.0.0.1` and uses empty broadcast targets. It must 
 - **2026-09-06, v1.75, decision #304:** use a same-origin local single-threaded Worker for PaddleOCR model loading, detection, recognition and pixel loops. Create it on demand; serialize from preprocessing, terminate active work on cancel/image change/close, and reuse the idle model. Transfer buffers and retain the 2200px input/960px detection limits. Copy crops per row and expose unpadded detection boxes for text positioning; align whole-line token cache validation with the existing 2000-character line bound. ImageTextLayer uses one transparent node per line, measures once, transforms only its parent on zoom, and extracts native Range text per line on copy. Preserve existing cache IPC, wire/schema/dependencies and strict CSP; verify the worker under real Electron22. Version **0.55.0 → 0.56.0**.
 
 - **2026-09-06, v1.76, decision #305:** calibrate text selection geometry and keep the gesture cursor stable. Version **0.56.0 → 0.56.1**.
+
+- **2026-09-07, decision #306, v0.56.2:** built-in emoji retain transparent Unicode text beneath local SVGs for native selection/copy without extra line breaks; whole-message copy retains original text. The Win7 editor copies/cuts its existing logical draft selection. Linux text inputs use native insertText only for explicit NumLock-on Numpad digits or matching navigation keys, without modifiers or composition; consume events only on successful insertion. Readonly/disabled fields, NumLock-off navigation, Windows and macOS keep native behavior. No protocol, schema, IPC or dependency changes. UOS native event-chain verification remains a target-platform check.

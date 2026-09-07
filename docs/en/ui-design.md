@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Current design | v1.88 for v0.56.1 |
+| Current design | v1.89 for v0.56.2 |
 | Main-window model | Three columns with Chat, Contacts, and File Cabinet tabs |
 | Authority | [ui-design.md](../ui-design.md) is the canonical UI and interaction record |
 
@@ -265,3 +265,5 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 - **2026-09-06, v1.87, decision #304:** replace the separate OCR result panel with in-image native text selection, manual/cancellable recognition and cache restoration. Version **0.55.0 → 0.56.0**.
 
 - **2026-09-06, v1.88, decision #305:** fix selection-box alignment and cross-line gesture cursor flicker. Version **0.56.0 → 0.56.1**.
+
+- **2026-09-07, decision #306, v0.56.2:** built-in emoji retain transparent Unicode text beneath local SVGs for native selection/copy without extra line breaks; whole-message copy retains original text. The Win7 editor copies/cuts its existing logical draft selection. Linux text inputs use native insertText only for explicit NumLock-on Numpad digits or matching navigation keys, without modifiers or composition; consume events only on successful insertion. Readonly/disabled fields, NumLock-off navigation, Windows and macOS keep native behavior. No protocol, schema, IPC or dependency changes. UOS native event-chain verification remains a target-platform check.

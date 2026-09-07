@@ -11,6 +11,21 @@ export function hasClipboardText(data: ClipboardTextSource): boolean {
   return data.getData('text/plain').length > 0
 }
 
+/** 表情的透明文字只复制为 Unicode，避免富文本接收方粘贴出透明字或本地 SVG。 */
+export function copyEmojiSelection(event: ClipboardEvent): void {
+  if (event.defaultPrevented || !event.clipboardData) return
+  // input / textarea 的选区独立于 window.getSelection，不能拿页面旧选区覆盖它。
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
+  const range = selection.getRangeAt(0)
+  const ancestor = range.commonAncestorContainer
+  const element = ancestor instanceof Element ? ancestor : ancestor.parentElement
+  if (!element?.closest('.compat-emoji') && !range.cloneContents().querySelector('.compat-emoji')) return
+  event.clipboardData.setData('text/plain', selection.toString())
+  event.preventDefault()
+}
+
 /**
  * 只把「整段剪贴板确实就是一张表」判为表格粘贴（决议 #270）。
  * 旧口径是「HTML 任意位置有 <table>」或「纯文本含任意一个 \t 且至少两行」，

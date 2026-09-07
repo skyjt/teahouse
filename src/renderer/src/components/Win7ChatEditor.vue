@@ -224,6 +224,21 @@ function onPaste(event: ClipboardEvent): void {
   replaceSelection(text)
 }
 
+function onCopy(event: ClipboardEvent): boolean {
+  if (event.defaultPrevented || !event.clipboardData) return false
+  const range = selectionRange()
+  if (range.start === range.end) return false
+  event.clipboardData.setData('text/plain', editorText().slice(range.start, range.end))
+  event.preventDefault()
+  return true
+}
+
+function onCut(event: ClipboardEvent): void {
+  if (props.disabled || composing) return
+  // 原子图片没有原生纯文本；先复制逻辑草稿，再用原生删除保留撤销和 input 事件。
+  if (onCopy(event)) document.execCommand('delete')
+}
+
 function focus(): void {
   root.value?.focus({ preventScroll: true })
 }
@@ -260,6 +275,8 @@ onMounted(() => renderValue(props.modelValue))
     @input="syncFromDom"
     @keydown="emit('keydown', $event)"
     @paste="onPaste"
+    @copy="onCopy"
+    @cut="onCut"
     @scroll="emit('scroll')"
     @compositionstart="onCompositionStart"
     @compositionend="onCompositionEnd"

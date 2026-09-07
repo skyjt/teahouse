@@ -4,7 +4,7 @@
 
 This is the English current-state handoff for developers and coding agents. Read it together with the [Contributing guide](../../CONTRIBUTING.en.md) and any local automation policy included in your development checkout. The Chinese handoff keeps the complete chronological release notes; `git log` remains authoritative for current implementation history.
 
-Last updated: 2026-09-06 for **v0.56.1** (decision #305, selection alignment and cursor fixes). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
+Last updated: 2026-09-07 for **v0.56.2** (decision #306, emoji copy and Linux numpad fixes). The application remains pinned to Electron 22.3.27, Node 16.17 main/preload, Chrome 108 renderer, and LAN-only runtime behavior.
 
 Image Viewer now offers Previous/Next canvas buttons across the full local history of the opened conversation, skipping unavailable images and disabling endpoints. Switching keeps window bounds and resets image/OCR state. Wire protocol, database schema, and dependencies are unchanged.
 
@@ -24,7 +24,7 @@ OCR now starts manually on every platform and restores cached results directly a
 
 | Area | State |
 |---|---|
-| Version | 0.56.1 selection alignment and cursor fixes (decision #305) |
+| Version | 0.56.2 emoji copy and Linux numpad fixes (decision #306) |
 | Branch/release base | `main`, previous release tag `v0.53.1` |
 | Core messaging | Private/group text, images, files, stickers, recall, forwarding, mentions, nudge, PK, offline retry |
 | Discovery | Same-subnet broadcast, manual IP/CIDR, gossip, scan-range sharing, confirmed global refresh |
@@ -135,3 +135,7 @@ Neiwangtong compatibility (#194–#196) is a design-only long-term item. Decisio
 CI decision #300: Linux explicitly restores required install hooks and builds better-sqlite3 once through `scripts/ci-install-linux.sh`. All five jobs reuse one application build for smoke and packaging, cache downloads per job, and avoid artifact recompression. Triggers and validation gates remain unchanged.
 
 Decision #305 corrects native selection-box dimensions and keeps a text cursor throughout cross-line dragging, preserving manual OCR and bounded resource usage.
+
+- **2026-09-07, decision #306, v0.56.2:** built-in emoji retain transparent Unicode text beneath local SVGs for native selection/copy without extra line breaks; whole-message copy retains original text. The Win7 editor copies/cuts its existing logical draft selection. Linux text inputs use native insertText only for explicit NumLock-on Numpad digits or matching navigation keys, without modifiers or composition; consume events only on successful insertion. Readonly/disabled fields, NumLock-off navigation, Windows and macOS keep native behavior. No protocol, schema, IPC or dependency changes. UOS native event-chain verification remains a target-platform check.
+
+Validation for #306: all five local gates passed (115 test files, 714 tests). Run `node scripts/input-selftest.cjs` to rebuild and mount the real components in isolated Electron 22, checking native emoji copy/paste/cut/undo and 31 numpad cases without starting application networking. Target Win7/UOS native event chains still require real-platform verification.

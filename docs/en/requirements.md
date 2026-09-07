@@ -4,8 +4,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Current for v0.56.1 image selection alignment and cursor fixes; Neiwangtong compatibility remains paused by decision #199 |
-| Updated | 2026-09-06 |
+| Status | Current for v0.56.2 emoji copy and Linux numpad fixes; Neiwangtong compatibility remains paused by decision #199 |
+| Updated | 2026-09-07 |
 | Authority | The [Chinese requirements document](../requirements.md) is the canonical feature and decision record. This document translates the current effective requirements. |
 
 ## 1. Product goals
@@ -188,3 +188,5 @@ The complete append-only ledger is maintained in [requirements.md §9](../requir
 ## 10. Translation maintenance
 
 Update this document whenever the current functional or non-functional requirements change. Preserve decision numbers and update the canonical Chinese decision ledger first. Historical superseded experiments may remain summarized in English when they no longer affect current behavior.
+
+- **2026-09-07, decision #306, v0.56.2:** built-in emoji retain transparent Unicode text beneath local SVGs for native selection/copy without extra line breaks; whole-message copy retains original text. The Win7 editor copies/cuts its existing logical draft selection. Linux text inputs use native insertText only for explicit NumLock-on Numpad digits or matching navigation keys, without modifiers or composition; consume events only on successful insertion. Readonly/disabled fields, NumLock-off navigation, Windows and macOS keep native behavior. No protocol, schema, IPC or dependency changes. UOS native event-chain verification remains a target-platform check.
