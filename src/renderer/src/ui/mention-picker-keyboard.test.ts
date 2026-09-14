@@ -1,0 +1,37 @@
+import { readFileSync } from 'node:fs'
+import { describe, expect, it } from 'vitest'
+
+const source = readFileSync(new URL('../components/ChatPane.vue', import.meta.url), 'utf8')
+
+function functionBody(name: string): string {
+  const start = source.indexOf(`function ${name}(`)
+  expect(start, `缺少函数 ${name}`).toBeGreaterThanOrEqual(0)
+  const next = source.indexOf('\nfunction ', start + 1)
+  return source.slice(start, next === -1 ? source.length : next)
+}
+
+describe('@ 成员面板键盘导航与实时过滤（决议 #308）', () => {
+  it('面板打开时方向键受门控，Enter 插入候选先于发送', () => {
+    const body = functionBody('onKeydown')
+    expect(body).toMatch(/if \(showMentionPicker\.value\) \{/)
+    expect(body).toMatch(/event\.key === 'ArrowDown' \|\| event\.key === 'ArrowUp'/)
+    expect(body).toMatch(/event\.key === 'Enter' && mentionCandidates\.value\.length > 0/)
+    expect(body).toMatch(/confirmMention\(\)/)
+    expect(body.indexOf('confirmMention()')).toBeLessThan(body.indexOf('void send()'))
+  })
+
+  it('候选列表带高亮态、悬停同步与无匹配空态', () => {
+    expect(source).toMatch(/v-for="\(id, index\) in mentionCandidates"/)
+    expect(source).toMatch(/:class="\{ active: index === mentionActiveIndex \}"/)
+    expect(source).toMatch(/@mouseenter="mentionActiveIndex = index"/)
+    expect(source).toMatch(/mentionCandidates\.length === 0/)
+    expect(source).toContain("tr('没有匹配的成员')")
+  })
+
+  it('过滤、令牌复核与高亮样式接入纯函数实现', () => {
+    expect(source).toContain('filterMentionCandidates(')
+    expect(source).toContain('parseMentionQuery(')
+    expect(source).toContain('stepMentionIndex(')
+    expect(source).toMatch(/\.mention-picker button\.active/)
+  })
+})

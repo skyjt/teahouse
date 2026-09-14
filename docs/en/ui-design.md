@@ -125,6 +125,8 @@ The message area preserves a conversation's scroll position. Entry from notifica
 
 The composer provides emoji, capture, image, file, and folder actions. It supports paste/drag/drop, draft persistence, Enter or Ctrl/Cmd+Enter sending, IME composition protection, dynamic height, and disabled/offline feedback.
 
+In group chats, typing `@` opens the mention popup. Arrow keys move a wrapping highlight that scrolls into view, Enter inserts the highlighted member instead of sending, and hovering an item syncs the highlight. Typing after `@` filters members by note and display name (case-insensitive) and shows an empty state when nothing matches. The popup closes when the `@` token is deleted, the caret leaves it, or whitespace ends it; Escape keeps its existing overlay priority, IME composition is excluded, and Tab keeps native focus behavior.
+
 Capture startup failures are never silent. When the main window was visible, it returns with a dismissible seven-second top-center status containing a warning icon, an explicit reason/fallback, `role=status`, and `aria-live=assertive`. A shortcut invoked from an already hidden window uses a system notification when available and reveals the app only as a fallback. Empty sources/images, hide failures, and exceptions all direct users to system capture plus chat-box `Ctrl+V` when built-in capture remains unavailable.
 
 On ARM64 Wayland, Electron 22 screen enumeration is bypassed before the main window hides, so capture immediately uses that visible system-capture + `Ctrl+V` fallback instead of risking a native process crash. x64 Wayland, ARM64 X11, and other platforms retain the existing flow.
@@ -268,6 +270,12 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 
 - **2026-09-07, decision #306, v0.56.2:** built-in emoji retain transparent Unicode text beneath local SVGs for native selection/copy without extra line breaks; whole-message copy retains original text. The Win7 editor copies/cuts its existing logical draft selection. Linux text inputs use native insertText only for explicit NumLock-on Numpad digits or matching navigation keys, without modifiers or composition; consume events only on successful insertion. Readonly/disabled fields, NumLock-off navigation, Windows and macOS keep native behavior. No protocol, schema, IPC or dependency changes. UOS native event-chain verification remains a target-platform check.
 
+- **2026-09-14, v1.91, decision #308:** the group `@` popup gains ArrowUp/ArrowDown highlight navigation with scroll-into-view, Enter selection, hover sync, live note/display-name filtering with an empty state, and token-based auto-dismiss; IME and Tab keep native behavior. Version **0.57.0 → 0.57.1**.
+
 ## Decision #307: Language selection
 
 General settings and onboarding expose “语言 / Language” with “简体中文” and “English”. Changes apply to open windows without losing input. Localize Naive UI, accessibility labels, prompts, tray and notifications; check long English labels at minimum sizes. User content stays verbatim. Native operating-system dialogs and installer chrome follow their own language settings.
+
+## Decision #308: Mention picker keyboard navigation (v0.57.1)
+
+Keep the group mention popup mouse-friendly while making it fully keyboard-operable: Arrow keys move a wrapping, scroll-into-view highlight, Enter inserts the highlighted member instead of sending, and hover syncs the highlight. Typing after `@` filters by note and display name (case-insensitive) with an explicit empty state. Deleting `@`, leaving the token, or typing whitespace closes the popup; Escape keeps its existing overlay priority and Tab keeps native focus behavior. Renderer-only; no protocol, storage, IPC, or dependency changes.
