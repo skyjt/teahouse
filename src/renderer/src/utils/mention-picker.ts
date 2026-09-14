@@ -1,5 +1,24 @@
 /** @ 成员面板的纯逻辑：过滤、键盘高亮步进、令牌范围判定（决议 #308）。 */
 
+/** @所有人 的候选匹配词：查询命中其一才在面板出现，避免默认高亮误发全员提醒（决议 #310） */
+const MENTION_ALL_QUERIES = ['所有人', '全体', 'all', 'everyone']
+
+/** 面板插入与发送识别共用的 @所有人 文案（中文界面 / 英文界面） */
+const MENTION_ALL_LABELS = ['所有人', 'Everyone']
+
+/** 当前查询是否应展示「所有人」候选 */
+export function matchesMentionAll(query: string): boolean {
+  const keyword = query.trim().toLowerCase()
+  if (!keyword) return false
+  return MENTION_ALL_QUERIES.some((word) => word.toLowerCase().includes(keyword))
+}
+
+/** 正文里是否仍保留 @所有人 文案（用户可能在发送前改语言或改字） */
+export function hasMentionAllToken(text: string): boolean {
+  const lower = text.toLowerCase()
+  return MENTION_ALL_LABELS.some((label) => lower.includes(`@${label.toLowerCase()}`))
+}
+
 /** 中文输入法可能上屏全角 ＠，两种触发符都认，插入时统一写回半角 @。 */
 export function isMentionTrigger(char: string | undefined): boolean {
   return char === '@' || char === '＠'

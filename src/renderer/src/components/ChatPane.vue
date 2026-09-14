@@ -18,7 +18,7 @@ import { emojiAdvanceWidth, fontOfStyle, setTextMeasurer } from '../utils/emoji-
 import { emojiToTwemojiCode, twemojiUrl } from '../utils/twemoji-assets'
 import { isImeCompositionKey } from '../utils/ime'
 import { isPlainEscape } from '../utils/escape'
-import { filterMentionCandidates, detectMentionInsertion, parseMentionQuery, stepMentionIndex } from '../utils/mention-picker'
+import { filterMentionCandidates, detectMentionInsertion, hasMentionAllToken, matchesMentionAll, parseMentionQuery, stepMentionIndex } from '../utils/mention-picker'
 import {
   TABLE_PASTE_HINT_MS,
   draftWithoutTablePaste,
@@ -56,6 +56,7 @@ import { vCachedImage } from '../directives/cached-image'
 import type { PkGame } from '../../../shared/pk'
 import {
   CAPS,
+  MENTION_ALL,
   NUDGE_MIN_INTERVAL_MS,
   RECALL_WINDOW_MS,
   TEXT_TCP_LIMIT,
@@ -309,9 +310,14 @@ const nudgeToolTip = computed(() => {
 const mentionMembers = computed(() =>
   group.value ? group.value.members.filter((id) => id !== chatStore.selfId) : []
 )
-// 键盘导航 + 实时过滤（决议 #308）：按备注与昵称做包含匹配，显示名（备注优先）不变
-const mentionCandidates = computed(() =>
-  filterMentionCandidates(
+/** 候选展示名：真实成员用备注优先显示名，保留值用文案（决议 #310） */
+function mentionLabel(id: string): string {
+  return id === MENTION_ALL ? tr('所有人') : peersStore.nameOf(id)
+}
+// 键盘导航 + 实时过滤（决议 #308）：按备注与昵称做包含匹配，显示名（备注优先）不变；
+// @所有人（决议 #310）仅在查询命中「所有人 / 全体 / all / everyone」时作为首项出现
+const mentionCandidates = computed(() => {
+  const members = filterMentionCandidates(
     mentionMembers.value,
     (id) => {
       const p = peersStore.byId(id)
@@ -319,7 +325,8 @@ const mentionCandidates = computed(() =>
     },
     mentionQuery.value
   )
-)
+  return matchesMentionAll(mentionQuery.value) ? [MENTION_ALL, ...members] : members
+})
 const inputPlaceholder = computed(() => {
   if (!canSend.value) return tr('你已不在该讨论组，无法发言')
   return settings.value?.sendKey === 'ctrlEnter'
@@ -1013,7 +1020,11 @@ async function send(): Promise<void> {
   const text = draft.value.trim()
   if (!text || overLimit.value || !canSend.value) return
   const mentions = isGroup.value
-    ? [...new Set(mentionIds.value)].filter((id) => text.includes(`@${peersStore.nameOf(id)}`))
+    ? [...new Set(mentionIds.value)].filter((id) =>
+        id === MENTION_ALL
+          ? hasMentionAllToken(text)
+          : text.includes(`@${peersStore.nameOf(id)}`)
+      )
     : []
   const id = replyToId.value ? replyToId.value : undefined
   draft.value = ''
@@ -1225,7 +1236,7 @@ function onInputCompositionEnd(): void {
 }
 
 function insertMention(nodeId: string): void {
-  const name = peersStore.nameOf(nodeId)
+  const name = mentionLabel(nodeId)
   const at = pendingMentionAt.value ?? draft.value.length
   const end = Math.max(at, inputSelectionRange().start)
   draft.value = `${draft.value.slice(0, at)}@${name} ${draft.value.slice(end)}`
@@ -2181,7 +2192,7 @@ async function onDrop(event: DragEvent): Promise<void> {
           @mouseenter="mentionActiveIndex = index"
           @mousedown.prevent="insertMention(id)"
         >
-          {{ peersStore.nameOf(id) }}
+          {{ mentionLabel(id) }}
         </button>
       </div>
       <div v-if="tablePasteHint" class="table-paste-hint" role="status" aria-live="polite">

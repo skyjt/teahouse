@@ -695,6 +695,7 @@ const english: Record<string, string> = {
   "{0}（有人@你）": "{0} (mentioned you)",
   "选择要 @ 的成员": "Choose a member to mention",
   "没有匹配的成员": "No matching member",
+  "所有人": "Everyone",
   "[文件夹] {0}": "[Folder] {0}",
   "截图前未能完全隐藏茶话间窗口，请重试；仍失败可使用系统截图。": "Teahouse could not fully hide before capture. Try again or use your system's screenshot tool.",
   "Wayland 未能提供可用屏幕。请在系统授权窗口选择屏幕，或使用系统截图后在聊天框按 Ctrl+V 发送。": "Wayland did not provide a screen. Select one in the system permission dialog, or take a system screenshot and press Ctrl+V in the chat.",

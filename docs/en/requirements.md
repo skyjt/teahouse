@@ -195,6 +195,8 @@ Update this document whenever the current functional or non-functional requireme
 
 - **2026-09-14, decision #309, v0.57.2:** with a Chinese IME active, the `@` keydown can carry `keyCode 229` and be swallowed by the composition guard, so the mention popup never opens. Keep the keyboard guard intact and detect the committed `@`/`＠` from the draft value instead, opening the popup when exactly one trigger character lands at the caret and always inserting a half-width `@name `. Paste, deletion, backspace, emoji, and member insertion never trigger it. Renderer-only; no protocol, schema, IPC, or dependency changes.
 
+- **2026-09-14, decision #310, v0.58.0:** group-wide mentions. `group-text.mentions` may carry the reserved value `"@all"`, available to any member. The mention popup only lists Everyone when the query matches 所有人 / 全体 / all / or everyone, so an empty query cannot accidentally notify the whole group. Receivers mark the conversation and strengthen the notification when the array contains their own ID or `"@all"`; senders still unicast per member. Legacy peers ignore the reserved value and still receive the message. No new field, capability, port, or schema change; protocol remains v0.51.
+
 ## Decision #307: Application languages (v0.57.0)
 
 Ship Simplified Chinese and English with an immediate, persistent language selector. New installations use Chinese on Chinese systems and English otherwise; existing configurations keep Chinese. Cover every application window, tray, notification and application-owned prompt. Preserve user content and historical system messages. New system messages include local template metadata for rendering in either language. All resources remain offline.
@@ -206,3 +208,7 @@ The group composer's `@` mention popup stays mouse-friendly while gaining full k
 ## Decision #309: Mention trigger under Chinese IMEs (v0.57.2)
 
 With a Chinese IME active, Chromium can deliver the `@` keydown with `keyCode 229` even outside composition, so the existing IME guard (decision #268) prevents the mention popup from opening. Keep the keyboard guard untouched and observe committed text instead: when the draft gains exactly one `@` or full-width `＠` at the caret, open the popup and keep writing the half-width `@name ` form. Multi-character paste, deletion, backspace, emoji insertion, and member insertion do not trigger it. Composition keeps the native key path. Renderer-only; no protocol, storage, IPC, or dependency changes.
+
+## Decision #310: Mention everyone (v0.58.0)
+
+`group-text.mentions` gains the backward-compatible reserved value `"@all"`, usable by any group member. The mention popup only shows the Everyone row when the query matches 所有人 / 全体 / all / or everyone, so an empty query cannot accidentally notify the whole group. Receivers mark the conversation and strengthen the notification when the array contains either their own ID or `"@all"`; senders still unicast to every member. Legacy peers ignore the value and still receive the message. No new field, capability, port, or schema change; protocol remains v0.51 and SQLite v16.

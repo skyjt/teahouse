@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   detectMentionInsertion,
   filterMentionCandidates,
+  hasMentionAllToken,
+  matchesMentionAll,
   parseMentionQuery,
   stepMentionIndex
 } from './mention-picker'
@@ -49,6 +51,23 @@ describe('@ 成员面板纯逻辑', () => {
     expect(parseMentionQuery('@zhang', 9, 6)).toBeNull()
     expect(parseMentionQuery('@zhang', -1, 6)).toBeNull()
     expect(parseMentionQuery('@zhang', 0, 99)).toBe('zhang')
+  })
+
+  it('@所有人 仅在查询命中关键词时作为候选出现（决议 #310）', () => {
+    expect(matchesMentionAll('')).toBe(false)
+    expect(matchesMentionAll('张')).toBe(false)
+    expect(matchesMentionAll('所')).toBe(true)
+    expect(matchesMentionAll('所有人')).toBe(true)
+    expect(matchesMentionAll('全体')).toBe(true)
+    expect(matchesMentionAll('all')).toBe(true)
+    expect(matchesMentionAll('ALL')).toBe(true)
+    expect(matchesMentionAll('every')).toBe(true)
+    expect(matchesMentionAll('everyone')).toBe(true)
+    expect(hasMentionAllToken('@所有人 开会')).toBe(true)
+    expect(hasMentionAllToken('请 @Everyone 看')).toBe(true)
+    expect(hasMentionAllToken('@every')).toBe(false)
+    expect(hasMentionAllToken('@张三')).toBe(false)
+    expect(hasMentionAllToken('没有 @ 令牌')).toBe(false)
   })
 
   it('中文输入法上屏：只有恰好插入一个 @/＠ 才识别为提及令牌', () => {

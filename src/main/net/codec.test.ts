@@ -196,6 +196,16 @@ describe('codec', () => {
     })
     expect(decode(encode(ok))).toMatchObject({ ok: true, known: true })
 
+    // @所有人（决议 #310）：保留值按普通受限字符串放行，不新增字段
+    const all = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-aaaa', {
+      kind: 'group-text',
+      text: 'hi @all',
+      groupId: 'group-1',
+      groupRev: 1,
+      mentions: ['@all']
+    })
+    expect(decode(encode(all))).toMatchObject({ ok: true, known: true })
+
     const tooMany = makeEnvelope(MSG_TYPES.msg, 'node-aaaa', {
       kind: 'group-text',
       text: 'hi',

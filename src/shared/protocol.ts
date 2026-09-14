@@ -241,6 +241,9 @@ export interface ScanRangesPayload {
 /** 群成员上限（requirements F-MSG-4，决议 #198 由 50 调至 200） */
 export const GROUP_MAX_MEMBERS = 200
 
+/** mentions 保留值：@所有人（决议 #310）。老版本不认识该值，只会当作普通成员 ID 忽略；提醒语义不影响投递。 */
+export const MENTION_ALL = '@all'
+
 export const RECALL_WINDOW_MS = TIMINGS.recallWindow
 export const NUDGE_MIN_INTERVAL_MS = TIMINGS.nudgeMinInterval
 export const NUDGE_RATE_WINDOW_MS = TIMINGS.nudgeRateWindow
