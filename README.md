@@ -9,13 +9,13 @@
 <p><b>不用连外网、不用架服务器，局域网里聊天和传文件</b></p>
 
 <p>
-  <a href="https://github.com/skyjt/teahouse/releases/latest">
-    <img src="https://img.shields.io/github/v/release/skyjt/teahouse?style=flat-square&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=3D8B6B&logo=github&logoColor=white" alt="最新版本" />
+  <a href="https://github.com/nameGXF/teahouse/releases/latest">
+    <img src="https://img.shields.io/github/v/release/nameGXF/teahouse?style=flat-square&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=3D8B6B&logo=github&logoColor=white" alt="最新版本" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-GPL--3.0--only-3D8B6B?style=flat-square" alt="GPL-3.0-only" />
   </a>
-  <a href="https://github.com/skyjt/teahouse/releases">
+  <a href="https://github.com/nameGXF/teahouse/releases">
     <img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%207%2B%20%7C%20Linux%20%7C%20macOS-0366d6?style=flat-square" alt="平台" />
   </a>
   <img src="https://img.shields.io/badge/Electron-22-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron 22" />
@@ -83,7 +83,7 @@
 
 ## 安装
 
-前往 [**Releases**](https://github.com/skyjt/teahouse/releases) 下载对应平台的安装包。
+前往 [**Releases**](https://github.com/nameGXF/teahouse/releases) 下载对应平台的安装包。
 
 **Windows** — 根据系统架构选择 x64 或 ia32（32 位）NSIS 安装包，也可直接使用对应便携版。Windows 7 需安装 **SP1**；若启用了代码签名，未打补丁的 Win7 需先安装系统更新 KB4474419。
 
@@ -151,7 +151,7 @@ xattr -dr com.apple.quarantine /Applications/Teahouse.app
 
 完整文档索引与英文版规范见 **[docs/README.md](docs/README.md)**。
 
-如遇问题或有功能建议，欢迎在 [Issues](https://github.com/skyjt/teahouse/issues) 提交反馈。
+如遇问题或有功能建议，欢迎在 [Issues](https://github.com/nameGXF/teahouse/issues) 提交反馈。
 
 ## 参考项目
 

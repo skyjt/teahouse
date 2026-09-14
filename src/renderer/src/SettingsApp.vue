@@ -1399,8 +1399,8 @@ async function confirmRemove(cidr: string): Promise<void> {
               <div class="about-row">
                 <dt>{{ tr('源码') }}</dt>
                 <dd>
-                  <a class="about-link" @click="openUrl('https://github.com/skyjt/teahouse')">
-                    github.com/skyjt/teahouse
+                  <a class="about-link" @click="openUrl('https://github.com/nameGXF/teahouse')">
+                    github.com/nameGXF/teahouse
                     <PantryIcon name="external" :size="13" />
                   </a>
                 </dd>

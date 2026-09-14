@@ -9,13 +9,13 @@
 <p><b>Chat and transfer files across a LAN, with no Internet connection or server</b></p>
 
 <p>
-  <a href="https://github.com/skyjt/teahouse/releases/latest">
-    <img src="https://img.shields.io/github/v/release/skyjt/teahouse?style=flat-square&label=latest&color=3D8B6B&logo=github&logoColor=white" alt="Latest release" />
+  <a href="https://github.com/nameGXF/teahouse/releases/latest">
+    <img src="https://img.shields.io/github/v/release/nameGXF/teahouse?style=flat-square&label=latest&color=3D8B6B&logo=github&logoColor=white" alt="Latest release" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-GPL--3.0--only-3D8B6B?style=flat-square" alt="GPL-3.0-only" />
   </a>
-  <a href="https://github.com/skyjt/teahouse/releases">
+  <a href="https://github.com/nameGXF/teahouse/releases">
     <img src="https://img.shields.io/badge/platform-Windows%207%2B%20%7C%20Linux%20%7C%20macOS-0366d6?style=flat-square" alt="Supported platforms" />
   </a>
   <img src="https://img.shields.io/badge/Electron-22-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron 22" />
@@ -77,7 +77,7 @@ Electron is pinned to **22.3.27**, the final major release supporting Windows 7.
 
 ## Installation
 
-Download the package for your platform from [GitHub Releases](https://github.com/skyjt/teahouse/releases).
+Download the package for your platform from [GitHub Releases](https://github.com/nameGXF/teahouse/releases).
 
 **Windows** — Choose the x64 or ia32 NSIS installer for your system, or use the matching portable executable. Windows 7 requires **SP1**. If a signed build is used on an unpatched Windows 7 installation, install KB4474419 first.
 
@@ -141,7 +141,7 @@ The discovery sequence takes inspiration from IP Messenger, while Teahouse uses 
 - [Development guide](DEVELOPMENT.en.md) explains architecture, data flow, and extension points.
 - [Documentation index](docs/en/README.md) links the English requirements, protocol, UI, technical design, handoff, compatibility, and optimization documents.
 
-Please report bugs and feature requests through [GitHub Issues](https://github.com/skyjt/teahouse/issues).
+Please report bugs and feature requests through [GitHub Issues](https://github.com/nameGXF/teahouse/issues).
 
 ## Related projects
 

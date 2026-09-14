@@ -15,7 +15,7 @@ The checked-in `.npmrc` uses npm mirror settings suitable for development in mai
 ## Quick start
 
 ```bash
-git clone https://github.com/skyjt/teahouse.git
+git clone https://github.com/nameGXF/teahouse.git
 cd teahouse
 npm install
 npm run dev

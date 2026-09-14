@@ -197,6 +197,8 @@ Update this document whenever the current functional or non-functional requireme
 
 - **2026-09-14, decision #310, v0.58.0:** group-wide mentions. `group-text.mentions` may carry the reserved value `"@all"`, available to any member. The mention popup only lists Everyone when the query matches 所有人 / 全体 / all / or everyone, so an empty query cannot accidentally notify the whole group. Receivers mark the conversation and strengthen the notification when the array contains their own ID or `"@all"`; senders still unicast per member. Legacy peers ignore the reserved value and still receive the message. No new field, capability, port, or schema change; protocol remains v0.51.
 
+- **2026-09-14, decision #311, v0.58.1:** the repository remote moves to the personal fork `nameGXF/teahouse` as `origin`, keeping the official `skyjt/teahouse` as `upstream` for syncing. README badges/release/issue links, the CONTRIBUTING clone URL, and the Settings About source link point at the fork. CI resolves `github.repository` dynamically and the deb homepage derives from the git remote, so no code changes are needed; historical records keep their original links. No protocol, schema, IPC, or dependency changes.
+
 ## Decision #307: Application languages (v0.57.0)
 
 Ship Simplified Chinese and English with an immediate, persistent language selector. New installations use Chinese on Chinese systems and English otherwise; existing configurations keep Chinese. Cover every application window, tray, notification and application-owned prompt. Preserve user content and historical system messages. New system messages include local template metadata for rendering in either language. All resources remain offline.
@@ -212,3 +214,7 @@ With a Chinese IME active, Chromium can deliver the `@` keydown with `keyCode 22
 ## Decision #310: Mention everyone (v0.58.0)
 
 `group-text.mentions` gains the backward-compatible reserved value `"@all"`, usable by any group member. The mention popup only shows the Everyone row when the query matches 所有人 / 全体 / all / or everyone, so an empty query cannot accidentally notify the whole group. Receivers mark the conversation and strengthen the notification when the array contains either their own ID or `"@all"`; senders still unicast to every member. Legacy peers ignore the value and still receive the message. No new field, capability, port, or schema change; protocol remains v0.51 and SQLite v16.
+
+## Decision #311: Personal fork remote (v0.58.1)
+
+The repository remote moves to the personal fork `nameGXF/teahouse` as `origin`, while the official `skyjt/teahouse` is kept as `upstream` for fetching official updates. README/README.en badges, Releases, and Issues links, the CONTRIBUTING clone URL, and the Settings About source link all point at the fork. Release CI uses the dynamic `github.repository` value and the deb homepage derives from the git remote, so no code changes are required; historical decision records keep their original links. Internal codenames, data directories, protocol, schema, IPC, and dependencies are unchanged.
