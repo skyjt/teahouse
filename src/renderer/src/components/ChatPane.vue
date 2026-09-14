@@ -18,7 +18,7 @@ import { emojiAdvanceWidth, fontOfStyle, setTextMeasurer } from '../utils/emoji-
 import { emojiToTwemojiCode, twemojiUrl } from '../utils/twemoji-assets'
 import { isImeCompositionKey } from '../utils/ime'
 import { isPlainEscape } from '../utils/escape'
-import { filterMentionCandidates, parseMentionQuery, stepMentionIndex } from '../utils/mention-picker'
+import { filterMentionCandidates, detectMentionInsertion, parseMentionQuery, stepMentionIndex } from '../utils/mention-picker'
 import {
   TABLE_PASTE_HINT_MS,
   draftWithoutTablePaste,
@@ -495,12 +495,14 @@ watch(
 
 watch([historyQuery, historyKind, historyFrom, historyTo], () => scheduleHistorySearch())
 
-watch(draft, () => {
+watch(draft, (next, prev) => {
   void nextTick(syncInputMirrorScroll)
   // 用户一改草稿，捕获的表格素材就与输入框对不上了，直接收起提示条（决议 #270）
   if (tablePasteHint.value && !tablePasteHintIntact(draft.value, tablePasteHint.value)) {
     clearTablePasteHint()
   }
+  // 中文输入法上屏的 @ 在 keydown 会被 IME 保护拦下，改从输入值变化识别（决议 #309）
+  if (openMentionFromInsertion(prev, next)) return
   // 草稿变化后复核 @ 令牌：查询实时过滤，删掉 @ 或输入空白即收起（决议 #308）
   if (showMentionPicker.value) void nextTick(syncMentionQuery)
 })
@@ -1110,6 +1112,18 @@ async function sendPk(game: PkGame): Promise<void> {
   if (!canSendPk.value) return
   showPk.value = false
   await chatStore.sendPk(game)
+}
+
+/** 输入值里出现新插入的 @/＠ 时打开面板；中文输入法下不经过按键分流（决议 #309） */
+function openMentionFromInsertion(prev: string, next: string): boolean {
+  if (!isGroup.value || !canSend.value || mentionMembers.value.length === 0) return false
+  const at = detectMentionInsertion(prev, next, inputSelectionRange().start)
+  if (at === null) return false
+  pendingMentionAt.value = at
+  mentionQuery.value = ''
+  mentionActiveIndex.value = 0
+  showMentionPicker.value = true
+  return true
 }
 
 /** 收起 @ 面板并复位键盘导航状态（决议 #308） */

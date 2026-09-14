@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { filterMentionCandidates, parseMentionQuery, stepMentionIndex } from './mention-picker'
+import {
+  detectMentionInsertion,
+  filterMentionCandidates,
+  parseMentionQuery,
+  stepMentionIndex
+} from './mention-picker'
 
 const names: Record<string, string> = {
   'node-a': '产品明哥 小明',
@@ -34,6 +39,7 @@ describe('@ 成员面板纯逻辑', () => {
   it('只有 @ 后在光标间存在无空白令牌时才是有效查询', () => {
     expect(parseMentionQuery('@zhang', 0, 6)).toBe('zhang')
     expect(parseMentionQuery('你好 @张', 3, 5)).toBe('张')
+    expect(parseMentionQuery('＠张', 0, 2)).toBe('张')
     expect(parseMentionQuery('@张 三', 0, 4)).toBeNull()
     expect(parseMentionQuery('@张\n三', 0, 4)).toBeNull()
     expect(parseMentionQuery('@张\u00a0三', 0, 4)).toBeNull()
@@ -43,5 +49,20 @@ describe('@ 成员面板纯逻辑', () => {
     expect(parseMentionQuery('@zhang', 9, 6)).toBeNull()
     expect(parseMentionQuery('@zhang', -1, 6)).toBeNull()
     expect(parseMentionQuery('@zhang', 0, 99)).toBe('zhang')
+  })
+
+  it('中文输入法上屏：只有恰好插入一个 @/＠ 才识别为提及令牌', () => {
+    expect(detectMentionInsertion('', '@', 1)).toBe(0)
+    expect(detectMentionInsertion('你好', '你好@', 3)).toBe(2)
+    expect(detectMentionInsertion('你好', '你@好', 2)).toBe(1)
+    expect(detectMentionInsertion('abc', 'abc@', 4)).toBe(3)
+    expect(detectMentionInsertion('', '＠', 1)).toBe(0)
+    expect(detectMentionInsertion('abc@', 'abc', 3)).toBeNull()
+    expect(detectMentionInsertion('abc', 'ab@c', 2)).toBeNull()
+    expect(detectMentionInsertion('', 'abc@', 3)).toBeNull()
+    expect(detectMentionInsertion('abc', 'abc', 0)).toBeNull()
+    expect(detectMentionInsertion('abc', 'abc@', 0)).toBeNull()
+    expect(detectMentionInsertion('abc', '@abc', 10)).toBeNull()
+    expect(detectMentionInsertion('abc', '@abc', 1.5)).toBeNull()
   })
 })

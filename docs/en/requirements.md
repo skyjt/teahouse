@@ -193,6 +193,8 @@ Update this document whenever the current functional or non-functional requireme
 
 - **2026-09-14, decision #308, v0.57.1:** the group `@` mention picker adds wrapping ArrowUp/ArrowDown highlight navigation with scroll-into-view, Enter inserts the highlighted member instead of sending, and hover syncs the highlight. Typing after `@` filters members by note and display name with an empty state; deleting the `@`, leaving the token, or typing whitespace closes the popup. IME composition and Tab keep native behavior. Renderer-only; no protocol, schema, IPC, or dependency changes.
 
+- **2026-09-14, decision #309, v0.57.2:** with a Chinese IME active, the `@` keydown can carry `keyCode 229` and be swallowed by the composition guard, so the mention popup never opens. Keep the keyboard guard intact and detect the committed `@`/`＠` from the draft value instead, opening the popup when exactly one trigger character lands at the caret and always inserting a half-width `@name `. Paste, deletion, backspace, emoji, and member insertion never trigger it. Renderer-only; no protocol, schema, IPC, or dependency changes.
+
 ## Decision #307: Application languages (v0.57.0)
 
 Ship Simplified Chinese and English with an immediate, persistent language selector. New installations use Chinese on Chinese systems and English otherwise; existing configurations keep Chinese. Cover every application window, tray, notification and application-owned prompt. Preserve user content and historical system messages. New system messages include local template metadata for rendering in either language. All resources remain offline.
@@ -200,3 +202,7 @@ Ship Simplified Chinese and English with an immediate, persistent language selec
 ## Decision #308: Mention picker keyboard navigation (v0.57.1)
 
 The group composer's `@` mention popup stays mouse-friendly while gaining full keyboard use. Arrow keys move a wrapping highlight that scrolls into view, Enter inserts the highlighted member instead of sending, and hovering an item syncs the highlight. Typing after `@` filters members by note and display name (case-insensitive); no match shows an empty state. The popup closes when the `@` token is deleted, the caret leaves it, or whitespace ends it, while Escape keeps its existing overlay behavior. IME composition and Tab retain native behavior. Renderer-only change; no protocol, storage, IPC, or dependency changes.
+
+## Decision #309: Mention trigger under Chinese IMEs (v0.57.2)
+
+With a Chinese IME active, Chromium can deliver the `@` keydown with `keyCode 229` even outside composition, so the existing IME guard (decision #268) prevents the mention popup from opening. Keep the keyboard guard untouched and observe committed text instead: when the draft gains exactly one `@` or full-width `＠` at the caret, open the popup and keep writing the half-width `@name ` form. Multi-character paste, deletion, backspace, emoji insertion, and member insertion do not trigger it. Composition keeps the native key path. Renderer-only; no protocol, storage, IPC, or dependency changes.

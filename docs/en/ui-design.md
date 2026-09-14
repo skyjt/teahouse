@@ -127,6 +127,8 @@ The composer provides emoji, capture, image, file, and folder actions. It suppor
 
 In group chats, typing `@` opens the mention popup. Arrow keys move a wrapping highlight that scrolls into view, Enter inserts the highlighted member instead of sending, and hovering an item syncs the highlight. Typing after `@` filters members by note and display name (case-insensitive) and shows an empty state when nothing matches. The popup closes when the `@` token is deleted, the caret leaves it, or whitespace ends it; Escape keeps its existing overlay priority, IME composition is excluded, and Tab keeps native focus behavior.
 
+With a Chinese IME active the `@` keydown can carry `keyCode 229` and stay with the composition guard, so the popup is opened from the committed draft value instead: exactly one new `@` or full-width `＠` at the caret opens it, member names are always written back with a half-width `@`, and no key event is consumed (decision #309).
+
 Capture startup failures are never silent. When the main window was visible, it returns with a dismissible seven-second top-center status containing a warning icon, an explicit reason/fallback, `role=status`, and `aria-live=assertive`. A shortcut invoked from an already hidden window uses a system notification when available and reveals the app only as a fallback. Empty sources/images, hide failures, and exceptions all direct users to system capture plus chat-box `Ctrl+V` when built-in capture remains unavailable.
 
 On ARM64 Wayland, Electron 22 screen enumeration is bypassed before the main window hides, so capture immediately uses that visible system-capture + `Ctrl+V` fallback instead of risking a native process crash. x64 Wayland, ARM64 X11, and other platforms retain the existing flow.
@@ -272,6 +274,8 @@ Circular avatars, local line icons, file-type artwork, tray graphics, and brand 
 
 - **2026-09-14, v1.91, decision #308:** the group `@` popup gains ArrowUp/ArrowDown highlight navigation with scroll-into-view, Enter selection, hover sync, live note/display-name filtering with an empty state, and token-based auto-dismiss; IME and Tab keep native behavior. Version **0.57.0 → 0.57.1**.
 
+- **2026-09-14, v1.92, decision #309:** with a Chinese IME active, a `keyCode 229` `@` keydown stays with the composition guard, so the popup is now opened from the committed draft value (half-width `@` or full-width `＠`, written back as half-width); the keyboard guard and composition behavior are unchanged. Version **0.57.1 → 0.57.2**.
+
 ## Decision #307: Language selection
 
 General settings and onboarding expose “语言 / Language” with “简体中文” and “English”. Changes apply to open windows without losing input. Localize Naive UI, accessibility labels, prompts, tray and notifications; check long English labels at minimum sizes. User content stays verbatim. Native operating-system dialogs and installer chrome follow their own language settings.
@@ -279,3 +283,7 @@ General settings and onboarding expose “语言 / Language” with “简体中
 ## Decision #308: Mention picker keyboard navigation (v0.57.1)
 
 Keep the group mention popup mouse-friendly while making it fully keyboard-operable: Arrow keys move a wrapping, scroll-into-view highlight, Enter inserts the highlighted member instead of sending, and hover syncs the highlight. Typing after `@` filters by note and display name (case-insensitive) with an explicit empty state. Deleting `@`, leaving the token, or typing whitespace closes the popup; Escape keeps its existing overlay priority and Tab keeps native focus behavior. Renderer-only; no protocol, storage, IPC, or dependency changes.
+
+## Decision #309: Mention trigger under Chinese IMEs (v0.57.2)
+
+With a Chinese IME active, Chromium may deliver the `@` keydown with `keyCode 229` even outside composition, so the composition guard (decision #268) keeps the popup from opening. The keyboard guard stays untouched; the committed draft value is observed instead. Exactly one new `@` or full-width `＠` at the caret opens the popup, members are always written back with a half-width `@`, and no key event is consumed. Composition keeps the native key path. Renderer-only; no protocol, storage, IPC, or dependency changes.

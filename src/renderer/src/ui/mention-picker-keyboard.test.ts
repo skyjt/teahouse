@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(new URL('../components/ChatPane.vue', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../components/ChatPane.vue', import.meta.url), 'utf8').replace(
+  /\r\n?/g,
+  '\n'
+)
 
 function functionBody(name: string): string {
   const start = source.indexOf(`function ${name}(`)
@@ -33,5 +36,23 @@ describe('@ 成员面板键盘导航与实时过滤（决议 #308）', () => {
     expect(source).toContain('parseMentionQuery(')
     expect(source).toContain('stepMentionIndex(')
     expect(source).toMatch(/\.mention-picker button\.active/)
+  })
+
+  it('中文输入法上屏的 @ 由草稿变化兜底识别并打开面板（决议 #309）', () => {
+    const body = functionBody('openMentionFromInsertion')
+    expect(source).toContain('detectMentionInsertion(')
+    expect(body).toMatch(/isGroup\.value/)
+    expect(body).toMatch(/canSend\.value/)
+    expect(body).toMatch(/mentionMembers\.value\.length === 0/)
+    expect(body).toMatch(/pendingMentionAt\.value = at/)
+    expect(body).toMatch(/showMentionPicker\.value = true/)
+    const watchBlock = source.slice(source.indexOf('watch(draft, (next, prev)'), source.indexOf('watch(\n  () => [peer.value'))
+    expect(watchBlock.indexOf('openMentionFromInsertion(prev, next)')).toBeGreaterThan(-1)
+    expect(watchBlock.indexOf('openMentionFromInsertion(prev, next)')).toBeLessThan(
+      watchBlock.indexOf('syncMentionQuery')
+    )
+    expect(source.indexOf('isImeCompositionKey(event, inputComposing.value)')).toBeLessThan(
+      source.indexOf("if (event.key === '@'")
+    )
   })
 })

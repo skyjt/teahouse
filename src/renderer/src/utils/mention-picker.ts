@@ -1,5 +1,22 @@
 /** @ 成员面板的纯逻辑：过滤、键盘高亮步进、令牌范围判定（决议 #308）。 */
 
+/** 中文输入法可能上屏全角 ＠，两种触发符都认，插入时统一写回半角 @。 */
+export function isMentionTrigger(char: string | undefined): boolean {
+  return char === '@' || char === '＠'
+}
+
+/**
+ * 识别一次「恰好插入一个 @/＠」的编辑；返回令牌起点，否则 null。
+ * 中文输入法激活时 @ 的 keydown 常带 keyCode 229 被 IME 保护拦下（决议 #308 遗留），
+ * 这里从输入值变化兜底识别，不参与任何按键分流（决议 #309）。
+ */
+export function detectMentionInsertion(prev: string, next: string, caret: number): number | null {
+  if (!Number.isInteger(caret) || caret < 1 || caret > next.length) return null
+  if (!isMentionTrigger(next[caret - 1])) return null
+  const removed = next.slice(0, caret - 1) + next.slice(caret)
+  return removed === prev ? caret - 1 : null
+}
+
 /** 按搜索文本（显示名 + 昵称）过滤成员；空查询返回全量。 */
 export function filterMentionCandidates(
   memberIds: readonly string[],
@@ -24,7 +41,7 @@ export function stepMentionIndex(current: number, delta: number, total: number):
  */
 export function parseMentionQuery(text: string, at: number, caret: number): string | null {
   if (!Number.isInteger(at) || at < 0 || at >= text.length) return null
-  if (text[at] !== '@') return null
+  if (!isMentionTrigger(text[at])) return null
   if (!Number.isInteger(caret) || caret <= at) return null
   const query = text.slice(at + 1, Math.min(caret, text.length))
   if (/\s/.test(query)) return null
