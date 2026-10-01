@@ -133,6 +133,14 @@ const tmp = mkdtempSync(join(tmpdir(), 'pantry-tray-icon-'))
 
 try {
   const mono = renderSvg(join(iconDir, 'pantry-logo-mono.svg'), tmp)
+  // 模板图按 alpha 着色；轮廓缩小后必须保留实心像素，否则浅色菜单栏上会发虚。
+  let opaquePixels = 0
+  for (let i = 3; i < mono.rgba.length; i += 4) {
+    if (mono.rgba[i] >= 240) opaquePixels++
+  }
+  if (opaquePixels < SIZE * SIZE * 0.05) {
+    throw new Error('macOS 托盘图标轮廓过细：缩小后缺少足够的不透明像素')
+  }
   const color = renderPng(join(iconDir, 'pantry-logo-icon.png'), tmp)
   const monoUrl = `data:image/png;base64,${mono.png.toString('base64')}`
   const colorUrl = `data:image/png;base64,${color.png.toString('base64')}`
