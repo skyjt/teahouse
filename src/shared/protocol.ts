@@ -356,7 +356,7 @@ export const OFFER_FILES_PER_PACKET = 6
 export const OFFER_ASSEMBLE_TIMEOUT = 10_000
 /** 单次传输文件数上限（防恶意 offer 撑爆内存） */
 export const MAX_FILES_PER_TRANSFER = 2000
-/** 发送端排队 / 哈希收尾期间 wait 帧保活间隔（§8，决议 #211） */
+/** 接收端预哈希、发送端排队 / 哈希收尾期间 wait 帧保活间隔（§8，决议 #211） */
 export const PULL_WAIT_HEARTBEAT = 20_000
 /** 接收端拉取空闲超时（§8，决议 #211）：超时判失败，可按 .part 断点续传重试 */
 export const PULL_IDLE_TIMEOUT = 60_000
@@ -535,7 +535,7 @@ export interface ErrFrame {
   type: 'err'
   reason: string
 }
-/** 排队 / 哈希收尾保活（决议 #211）：仅发给声明 tw1 的对端，旧端遇未知帧型会断链 */
+/** 预哈希 / 排队 / 哈希收尾保活：仅发给声明 tw1 的对端，旧端遇未知帧型会断链 */
 export interface WaitFrame {
   type: 'wait'
 }

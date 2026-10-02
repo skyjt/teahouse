@@ -231,6 +231,7 @@ Resource budgets:
 - Valid first frame required within 15 seconds.
 - 60-second active idle timeout.
 - A `tw1` sender emits `wait` immediately and every 20 seconds while an authorized pull is queued or final hashing remains in progress.
+- During `.part` prehashing, the receiver sends an immediate `wait` and then one every 20 seconds only if the sender advertises `tw1`. The first frame changes the sender idle window from 15 to 60 seconds. For legacy senders, each partial file is hashed while disconnected, then a new connection pulls it. A complete `.part` also needs sender hash-finalization heartbeats. Cancellation/disconnection stops prehashing, heartbeats, and pending writes; late write callbacks cannot rename files or start the next file. `wait` does not extend offer expiry (#53).
 
 Receiver cancellation retains `.part` and authorization when both peers support `tw1`; a later pull resumes. Sender cancellation revokes authorization and is terminal. Ordinary chat-file offers expire 24 hours after sending. A transfer already active at the deadline may finish, while a later failed/restarted attempt becomes expired.
 

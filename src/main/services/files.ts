@@ -747,6 +747,7 @@ export class FilesService extends EventEmitter {
       files: plans,
       saveDir: base,
       cancelRef: inc.cancelRef,
+      supportsWait: this.peerSupportsTransferWait(inc.peerId),
       onProgress: (delta) => {
         inc.bytesDone += delta
         this.emitTransfer(transferId, false)

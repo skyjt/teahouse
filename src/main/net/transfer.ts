@@ -1,4 +1,4 @@
-import { createServer, createConnection, type Server, type Socket } from 'node:net'
+import { createServer, Socket, type Server } from 'node:net'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
@@ -40,7 +40,7 @@ export interface OutgoingLookup {
 
 export type ReadStreamFactory = (
   path: string,
-  options?: { start?: number }
+  options?: { start?: number; end?: number }
 ) => ReturnType<typeof createReadStream>
 
 export interface TransferServerLimits {
@@ -365,6 +365,7 @@ export class TransferServer extends EventEmitter {
           })
 
           if (len === 0) {
+            if (digest === null) startWaitHeartbeat(wantsWait)
             finishResumeIfReady()
             return
           }
@@ -445,6 +446,11 @@ export interface PullOptions {
   onQueued?: (queued: boolean) => void
   /** 空闲超时（决议 #211）：超过该时长无任何帧/数据判失败；默认 PULL_IDLE_TIMEOUT */
   idleTimeoutMs?: number
+  /** 只有发送端声明 tw1 才能接收预哈希 wait；未知能力按旧端处理。 */
+  supportsWait?: boolean
+  /** 测试注入：预哈希保活间隔与读取流。 */
+  waitHeartbeatMs?: number
+  openReadStream?: ReadStreamFactory
   /** 测试注入：默认写入真实文件系统 */
   openWriteStream?: WriteStreamFactory
 }
@@ -453,18 +459,12 @@ export interface PullOptions {
 export function pullTransfer(opts: PullOptions): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     const root = pathResolve(opts.saveDir)
-    const socket = createConnection({ host: opts.host, port: opts.port })
-    opts.cancelRef.socket = socket
-    socket.setNoDelay(true)
+    let socket = new Socket()
     let stage: PullStage = 'connect'
     const phase = (value: PullStage): void => {
       stage = value
       opts.onPhase?.(value, socket.localAddress, socket.localPort)
     }
-    phase('connect')
-    // 空闲超时（决议 #211）：建连与排队阶段同样计时；发送端 wait 保活会刷新计时器
-    socket.setTimeout(positiveLimit(opts.idleTimeoutMs, PULL_IDLE_TIMEOUT))
-    socket.on('timeout', () => fail('timeout'))
 
     const queue = [...opts.files]
     let current: {
@@ -476,10 +476,19 @@ export function pullTransfer(opts: PullOptions): Promise<void> {
       left: number
       /** pull-ok 已到达：之后的 wait 帧只是哈希收尾保活，不再是排队状态 */
       started: boolean
+      finishing: boolean
     } | null = null
     let settled = false
     /** 写盘背压 pause 后，文件切换时 end() 可能吞掉 drain，须显式 resume */
     let socketPaused = false
+    let preparingStream: ReturnType<ReadStreamFactory> | null = null
+    let prepareHeartbeat: ReturnType<typeof setInterval> | null = null
+    const stopPreparing = (): void => {
+      if (prepareHeartbeat) clearInterval(prepareHeartbeat)
+      prepareHeartbeat = null
+      preparingStream?.destroy()
+      preparingStream = null
+    }
     const removePart = (path: string): void => {
       try {
         rmSync(path, { force: true })
@@ -496,6 +505,7 @@ export function pullTransfer(opts: PullOptions): Promise<void> {
     const fail = (reason: string, error?: unknown): void => {
       if (settled) return
       settled = true
+      stopPreparing()
       resumeSocket()
       if (current) {
         current.stream.destroy()
@@ -516,17 +526,23 @@ export function pullTransfer(opts: PullOptions): Promise<void> {
     const succeed = (): void => {
       if (settled) return
       settled = true
+      stopPreparing()
       resumeSocket()
       socket.end()
       phase('complete')
       resolvePromise()
     }
 
-    const next = (): void => {
-      if (opts.cancelRef.canceled) {
-        fail('canceled')
-        return
+    const canContinue = (): boolean => {
+      if (settled) return false
+      if (opts.cancelRef.canceled || socket.destroyed) {
+        fail(opts.cancelRef.canceled ? 'canceled' : 'closed')
+        return false
       }
+      return true
+    }
+    const next = (): void => {
+      if (!canContinue()) return
       const plan = queue.shift()
       if (!plan) {
         socket.write(encodeFrame({ type: 'finish', transferId: opts.transferId }))
@@ -534,6 +550,7 @@ export function pullTransfer(opts: PullOptions): Promise<void> {
         return
       }
       phase('prepare')
+      if (!canContinue()) return
       const finalPath = join(root, ...plan.relPath.split('/'))
       if (!pathResolve(finalPath).startsWith(root + sep)) {
         fail('path-escape') // sanitize 之外的最后一道闸
@@ -565,7 +582,10 @@ export function pullTransfer(opts: PullOptions): Promise<void> {
       if (offset > 0) opts.onProgress(offset)
       const hash = createHash('sha256')
       const startPull = (): void => {
+        stopPreparing()
+        if (!canContinue()) return
         phase('pull')
+        if (!canContinue()) return
         current = {
           plan,
           partPath,
@@ -573,7 +593,8 @@ export function pullTransfer(opts: PullOptions): Promise<void> {
           stream: (opts.openWriteStream ?? createWriteStream)(partPath, { flags: offset > 0 ? 'a' : 'w' }),
           hash,
           left: plan.size - offset,
-          started: false
+          started: false,
+          finishing: false
         }
         current.stream.on('error', error => fail('write-error', error))
         socket.write(
@@ -590,82 +611,133 @@ export function pullTransfer(opts: PullOptions): Promise<void> {
         startPull()
         return
       }
-      const existing = createReadStream(partPath, { start: 0, end: offset - 1 })
-      existing.on('data', (chunk) => hash.update(chunk))
-      existing.on('error', error => {
-        removePart(partPath)
+      if (!canContinue()) return
+      if (opts.supportsWait) {
+        // 首个 wait 把发送端的 15 秒握手空闲切到 60 秒；后续心跳覆盖慢预哈希。
+        socket.write(encodeFrame({ type: 'wait' }))
+        prepareHeartbeat = setInterval(() => {
+          if (canContinue()) socket.write(encodeFrame({ type: 'wait' }))
+        }, positiveLimit(opts.waitHeartbeatMs, PULL_WAIT_HEARTBEAT))
+      } else {
+        // 旧端不识别 wait：先关闭空闲连接，预哈希完成再连接拉取。
+        // 新的未连接 socket 仍交给 cancelRef，取消可立即终止本地读取。
+        const previous = socket
+        socket = new Socket()
+        socketPaused = false
+        attachSocket(socket)
+        previous.destroy()
+      }
+      try {
+        const existing = (opts.openReadStream ?? createReadStream)(partPath, { start: 0, end: offset - 1 })
+        preparingStream = existing
+        existing.on('data', (chunk) => { if (canContinue()) hash.update(chunk) })
+        existing.on('error', error => {
+          if (!canContinue()) return
+          removePart(partPath)
+          fail('part-read-error', error)
+        })
+        existing.on('end', () => {
+          stopPreparing()
+          if (!canContinue()) return
+          if (opts.supportsWait) startPull()
+          else connect(startPull)
+        })
+      } catch (error) {
         fail('part-read-error', error)
-      })
-      existing.on('end', startPull)
+      }
     }
 
-    const reader = new FrameReader(
-      (frame) => {
-        if (frame.type === 'err') {
-          fail(`peer:${frame.reason}`)
-          return
-        }
-        if (frame.type === 'wait') {
-          // 发送端排队 / 哈希收尾保活（决议 #211）：帧本身已刷新空闲计时
-          if (current && !current.started) opts.onQueued?.(true)
-          return
-        }
-        if (frame.type === 'pull-ok' && current) {
-          phase('receive')
-          current.started = true
-          opts.onQueued?.(false)
-          if (frame.len !== current.left) {
-            fail('size-mismatch')
+    const createReader = (connection: Socket): FrameReader => {
+      const reader = new FrameReader(
+        (frame) => {
+          if (connection !== socket || !canContinue()) return
+          if (frame.type === 'err') {
+            fail(`peer:${frame.reason}`)
             return
           }
-          if (frame.len > 0) reader.expectRaw(frame.len)
-          return
-        }
-        if (frame.type === 'done' && current) {
-          phase('verify')
-          const item = current
-          current = null
-          // Node Writable 在 end/finish 路径上可能不再 emit drain；
-          // 若上一文件写盘背压 pause 了 socket，不 resume 则下一文件 pull-ok 永远读不到（死锁）。
-          resumeSocket()
-          item.stream.end(() => {
-            const got = item.hash.digest('hex')
-            if (got !== frame.sha256) {
-              removePart(item.partPath)
-              fail('hash-mismatch')
+          if (frame.type === 'wait') {
+            // 发送端排队 / 哈希收尾保活（决议 #211）：帧本身已刷新空闲计时
+            if (current && !current.started) opts.onQueued?.(true)
+            return
+          }
+          if (frame.type === 'pull-ok' && current && !current.finishing) {
+            phase('receive')
+            current.started = true
+            opts.onQueued?.(false)
+            if (frame.len !== current.left) {
+              fail('size-mismatch')
               return
             }
-            // 重名避让（F-FILE-3 不覆盖）：根级避让在服务层，此处兜底逐文件避让
-            try {
-              phase('write')
-              renameSync(item.partPath, dedupeTargetPath(item.finalPath))
-            } catch (error) {
-              removePart(item.partPath)
-              fail('write-error', error)
-              return
-            }
-            next()
-          })
-        }
-      },
-      (chunk) => {
-        if (!current) return
-        current.hash.update(chunk)
-        current.left -= chunk.length
-        if (!current.stream.write(chunk) && !socketPaused) {
-          socketPaused = true
-          socket.pause()
-          current.stream.once('drain', () => resumeSocket())
-        }
-        opts.onProgress(chunk.length)
-      },
-      (reason) => fail(reason)
-    )
-
-    socket.on('data', (chunk) => reader.feed(chunk))
-    socket.on('error', error => fail('socket-error', error))
-    socket.on('close', () => fail('closed'))
-    socket.on('connect', () => { phase('connected'); next() })
+            if (frame.len > 0) reader.expectRaw(frame.len)
+            return
+          }
+          if (frame.type === 'done' && current && !current.finishing) {
+            phase('verify')
+            const item = current
+            item.finishing = true
+            // Node Writable 在 end/finish 路径上可能不再 emit drain；
+            // 若上一文件写盘背压 pause 了 socket，不 resume 则下一文件 pull-ok 永远读不到（死锁）。
+            resumeSocket()
+            item.stream.end(() => {
+              if (!canContinue()) return
+              const got = item.hash.digest('hex')
+              if (got !== frame.sha256) {
+                removePart(item.partPath)
+                fail('hash-mismatch')
+                return
+              }
+              // 重名避让（F-FILE-3 不覆盖）：根级避让在服务层，此处兜底逐文件避让
+              try {
+                phase('write')
+                if (!canContinue()) return
+                renameSync(item.partPath, dedupeTargetPath(item.finalPath))
+              } catch (error) {
+                removePart(item.partPath)
+                fail('write-error', error)
+                return
+              }
+              current = null
+              next()
+            })
+          }
+        },
+        (chunk) => {
+          if (connection !== socket || !canContinue() || !current || current.finishing) return
+          current.hash.update(chunk)
+          current.left -= chunk.length
+          if (!current.stream.write(chunk) && !socketPaused) {
+            socketPaused = true
+            socket.pause()
+            current.stream.once('drain', () => resumeSocket())
+          }
+          opts.onProgress(chunk.length)
+        },
+        (reason) => { if (connection === socket) fail(reason) }
+      )
+      return reader
+    }
+    const attachSocket = (connection: Socket): void => {
+      opts.cancelRef.socket = connection
+      connection.setNoDelay(true)
+      const reader = createReader(connection)
+      connection.on('data', chunk => { if (connection === socket && canContinue()) reader.feed(chunk) })
+      connection.on('timeout', () => { if (connection === socket) fail('timeout') })
+      connection.on('error', error => { if (connection === socket) fail('socket-error', error) })
+      connection.on('close', () => { if (connection === socket) fail('closed') })
+    }
+    const connect = (ready: () => void): void => {
+      if (!canContinue()) return
+      phase('connect')
+      socket.setTimeout(positiveLimit(opts.idleTimeoutMs, PULL_IDLE_TIMEOUT))
+      const connection = socket
+      connection.connect({ host: opts.host, port: opts.port }, () => {
+        if (connection !== socket || !canContinue()) return
+        phase('connected')
+        ready()
+      })
+    }
+    attachSocket(socket)
+    connect(next)
   })
 }
 
