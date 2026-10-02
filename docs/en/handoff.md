@@ -2,7 +2,7 @@
 
 > [简体中文](../handoff.md) · **English**
 
-> Current update: 2026-10-02, v0.61.0 (#318), PR #42 integration and interaction/bundle fixes. GitHub Release is authoritative for publication status. Next decision: #319.
+> Current update: 2026-10-02, preparing the v0.61.1 patch release for issue #53 resume-prehash timeout/cancellation and legacy compatibility, plus the reproduced restricted reinvitation path for issue #51. Functional commit `a9fe833` passed Mac validation; Win7/UOS ARM64 hardware and actual multi-machine transfers remain unverified. GitHub Release is authoritative for publication status. Next decision: #319.
 > Historical update: 2026-09-18, **v0.60.2 discovery and scan reliability (#317)**. Shared scan queue with manual priority/background resumption, recurring range scheduling, source validation, paced gossip, unknown-heartbeat recovery, correlated dp1 probes and same-revision ordering. Next decision: **#318**. Local implementation, not published. Validation: 126 files / 842 tests, Electron database, typecheck, build/bundle gates and isolated smoke passed. Real Electron 22 verified profile/group refresh, dp1 advertisement and global/single-range scan IPC/progress; loopback includes delayed legacy replies, with simulated scale/time checks. Physical target-platform and VLAN/1000-device acceptance remain open.
 
 This is the English current-state handoff for developers and coding agents. Read it together with the [Contributing guide](../../CONTRIBUTING.en.md) and any local automation policy included in your development checkout. The Chinese handoff keeps the complete chronological release notes; `git log` remains authoritative for current implementation history.

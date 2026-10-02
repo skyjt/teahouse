@@ -559,6 +559,11 @@ jobs:
               echo "$OTHERS"
               echo ""
             fi
+            # 按版本保留修复范围和验收限制，避免提交标题被误读为全平台验收结论。
+            if [ -f ".github/release-notes/${CURRENT_TAG}.md" ]; then
+              cat ".github/release-notes/${CURRENT_TAG}.md"
+              echo ""
+            fi
             echo "## 提交明细 / Commits"
             echo ""
             echo "范围 / Range: \`${RANGE}\`"
