@@ -200,6 +200,8 @@ Group metadata includes group ID, name, member IDs, monotonic revision, update t
 
 `group{op:"info"}` distributes complete metadata. `group{op:"need"}` requests it when a message references an unknown or newer revision. Group text and media are sent separately to each member with one logical message ID. Membership is capped at 200.
 
+For reinvitation catch-up (#51), a receiver absent from its local member list may accept a snapshot that adds it back only when the sender is the locally known owner or administrator and matches `updatedBy`. Owner, administrator set, and management identity must stay unchanged, with no member removals. Each accumulated name/avatar/description/announcement change and the member addition must pass the existing permission checks, and the revision gap must cover all steps. Only the final snapshot is persisted; no assumed intermediate history is stored. Other cumulative combinations, ordinary-member authors, and third-party relays retain the existing rules. Legacy first-receipt compatibility and LWW ordering are unchanged.
+
 ### 7.4 Custom avatars
 
 Profiles and groups announce a lowercase 64-character SHA-256 hash. Peers advertising `av1` may exchange `avatar` request/data/miss operations. Data is bounded to a validated static 192×192 WebP. Managed storage verifies format, size, and hash before atomic placement. A group avatar may fail over among online group members; `miss` is best-effort to avoid old-client ACK behavior.

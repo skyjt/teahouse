@@ -25,6 +25,7 @@ import { SearchService } from '../services/search'
 import { PorterService } from '../services/porter'
 import { PeerRegistry } from '../net/peer-registry'
 import { verifyGlobalSearch } from './search-selftest'
+import { verifyGroupReinvite } from './group-reinvite-selftest'
 import { verifyImageNavigationQueries } from './image-navigation-selftest'
 import type { PeerRecord } from '../net/peer-registry'
 import { LIMITS } from '../../shared/protocol'
@@ -74,6 +75,7 @@ const db = openDatabase(join(dir, 'chat.db'))
 try {
   console.log(`[db-selftest] runtime node=${process.versions.node} abi=${process.versions.modules}`)
   verifyGlobalSearch()
+  verifyGroupReinvite(dir)
   verifyImageNavigationQueries()
 
   // 协助卡片复用系统消息，验证真实 SQLite 持久性与异常退出自愈。

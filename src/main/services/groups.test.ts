@@ -1542,3 +1542,100 @@ describe('GroupsService 跨版本全量快照补齐', () => {
     }
   })
 })
+
+// #51：只补齐重新邀请，不把未验证的累计快照当作无条件 LWW 覆盖。
+describe('GroupsService 重新邀请补齐累计快照', () => {
+  function client(selfId: string, repo = new FakeGroupRepo()) {
+    const messenger = new FakeMessenger(), msgRepo = new FakeMsgRepo()
+    const svc = new GroupsService({ selfId, messenger: messenger as unknown as Messenger,
+      groupRepo: repo as unknown as GroupRepo, convRepo: new FakeConvRepo() as unknown as ConvRepo,
+      msgRepo: msgRepo as unknown as MsgRepo, getSelfIp: () => '127.0.0.1' })
+    return { svc, messenger, repo }
+  }
+  function deliver(from: ReturnType<typeof client>, to: ReturnType<typeof client>, target = 'member') {
+    const messages = from.messenger.sent.splice(0)
+    for (const { peerId, env } of messages) if (peerId === target && env.type === MSG_TYPES.group) {
+      expect(decode(encode(env))).toMatchObject({ ok: true, known: true })
+      to.messenger.emit('incoming', env, { address: '127.0.0.1' })
+    }
+  }
+  function fixture(adminPassword = '') {
+    const owner = client('owner'), member = client('member')
+    const group = owner.svc.createGroup('原群名', ['member', 'admin', 'other'], adminPassword, adminPassword ? '原管理提示' : '')!
+    owner.svc.updateGroup(group.groupId, { kind: 'set-admin', memberId: 'admin', enabled: true })
+    deliver(owner, member)
+    return { owner, member, groupId: group.groupId }
+  }
+
+  it.each(['owner', 'admin'])('已知%s改名后重新邀请，双方成员状态一致且可发言', actorId => {
+    const { owner, member, groupId } = fixture()
+    const actor = actorId === 'owner' ? owner : client('admin', owner.repo)
+    actor.svc.updateGroup(groupId, { kind: 'remove', memberIds: ['member'] })
+    deliver(actor, member)
+    expect(member.svc.get(groupId)?.amMember).toBe(false)
+    actor.svc.updateGroup(groupId, { kind: 'rename', name: '离组期间改名' })
+    expect(actor.messenger.sent.some(item => item.peerId === 'member')).toBe(false)
+    actor.svc.updateGroup(groupId, { kind: 'invite', memberIds: ['member'] })
+    deliver(actor, member)
+    expect(member.repo.get(groupId)).toEqual(owner.repo.get(groupId))
+    expect(member.svc.get(groupId)?.amMember).toBe(true)
+    expect(member.svc.sendText(groupId, '重新加入后可发言')).not.toBeNull()
+  })
+
+  it('主动退群后错过多次合法变更，直接 need/info 补齐并拒绝乱序回退或重复通知', () => {
+    const { owner, member, groupId } = fixture()
+    member.svc.leaveGroup(groupId)
+    deliver(member, owner, 'owner')
+    const stale = member.repo.get(groupId)!
+    const patches: GroupPatch[] = [
+      { kind: 'rename', name: '新群名' }, { kind: 'set-avatar', avatarHash: 'a'.repeat(64) },
+      { kind: 'set-description', description: '新简介' }, { kind: 'set-announce', announce: '新公告' },
+      { kind: 'invite', memberIds: ['member', 'new-member'] }
+    ]
+    for (const patch of patches) owner.svc.updateGroup(groupId, patch)
+    owner.messenger.sent.length = 0 // 模拟邀请信息未抵达，主动索取当前快照。
+    owner.messenger.emit('incoming', makeEnvelope<GroupPayload>(MSG_TYPES.group, 'member', { op: 'need', groupId }))
+    let updates = 0
+    member.svc.on('group', () => { updates++ })
+    deliver(owner, member)
+    const latest = owner.repo.get(groupId)!
+    expect(member.repo.get(groupId)).toEqual(latest)
+    expect(updates).toBe(1)
+    for (const group of [stale, latest]) member.messenger.emit('incoming',
+      makeEnvelope<GroupPayload>(MSG_TYPES.group, group.updatedBy, { op: 'info', group }))
+    expect(member.repo.get(groupId)).toEqual(latest)
+    expect(updates).toBe(1)
+  })
+
+  it('版本差不足、改管理身份/角色、移除成员、越权作者及第三方转发均不落库', () => {
+    const { owner, member, groupId } = fixture('test-password')
+    owner.svc.updateGroup(groupId, { kind: 'remove', memberIds: ['member'] })
+    deliver(owner, member)
+    const local = member.repo.get(groupId)!
+    const base: GroupMeta = { ...local, name: '累计改名', avatarHash: 'a'.repeat(64),
+      members: [...local.members, 'member'], rev: local.rev + 10, updatedTs: local.updatedTs + 1000,
+      updatedBy: 'owner' }
+    const invalid: Array<{ patch?: Partial<GroupMeta>; sender?: string }> = [
+      { patch: { rev: local.rev + 2 } },
+      { patch: { creatorId: 'other' } }, { patch: { adminSecretHash: 'b'.repeat(64) } },
+      { patch: { adminHint: '改管理身份' } },
+      { patch: { ownerId: 'admin', adminIds: [] } },
+      { patch: { adminIds: ['admin', 'other'] } },
+      { patch: { members: base.members.filter(id => id !== 'other') } },
+      { patch: { updatedBy: 'other' }, sender: 'other' },
+      { patch: { updatedBy: 'member' }, sender: 'member' },
+      { sender: 'other' }
+    ]
+    let updates = 0
+    member.svc.on('group', () => { updates++ })
+    for (const { patch, sender } of invalid) {
+      const incoming = { ...base, ...patch }
+      const env = makeEnvelope<GroupPayload>(MSG_TYPES.group, sender ?? incoming.updatedBy, { op: 'info', group: incoming })
+      expect(decode(encode(env))).toMatchObject({ ok: true, known: true })
+      member.messenger.emit('incoming', env, { address: local.creatorIp })
+      expect(member.repo.get(groupId)).toEqual(local)
+      expect(member.svc.get(groupId)?.amMember).toBe(false)
+    }
+    expect(updates).toBe(0)
+  })
+})

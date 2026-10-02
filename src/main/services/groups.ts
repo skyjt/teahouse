@@ -520,6 +520,46 @@ export class GroupsService extends EventEmitter {
     senderId: string,
     sourceIp: string | undefined
   ): boolean {
+    if (this.canApplyKnownRemoteInfo(local, incoming, senderId, sourceIp)) return true
+    // 离组期间不会收到群内变更；重新邀请携带的是累计快照，而非单次 invite。
+    // 只允许本地已知管理者本人补齐，不从来包授予其新权限，也不接管角色/成员移除。
+    if (
+      !local || local.members.includes(this.deps.selfId) ||
+      !incoming.members.includes(this.deps.selfId) ||
+      senderId !== incoming.updatedBy ||
+      !['owner', 'admin'].includes(groupRoleOf(local, senderId)) ||
+      !sameManagementIdentity(local, incoming) ||
+      incoming.ownerId !== local.ownerId ||
+      !sameStringSet(incoming.adminIds, local.adminIds) ||
+      local.members.some(id => !incoming.members.includes(id))
+    ) return false
+
+    const steps: Array<Partial<GroupMeta>> = []
+    for (const key of ['name', 'avatarHash', 'description', 'announce'] as const) {
+      if ((incoming[key] ?? '') !== (local[key] ?? '')) steps.push({ [key]: incoming[key] })
+    }
+    steps.push({ members: incoming.members })
+    if (incoming.rev - local.rev < steps.length) return false
+
+    // 仅在内存中逐项复用原权限矩阵；任一步失败均不写库、不产生中间 UI 状态。
+    let previous = local
+    for (const step of steps) {
+      const next: GroupMeta = {
+        ...previous, ...step, rev: previous.rev + 1,
+        updatedBy: incoming.updatedBy, updatedTs: incoming.updatedTs
+      }
+      if (!this.canApplyKnownRemoteInfo(previous, next, senderId, sourceIp)) return false
+      previous = next
+    }
+    return true
+  }
+
+  private canApplyKnownRemoteInfo(
+    local: GroupMeta | undefined,
+    incoming: GroupMeta,
+    senderId: string,
+    sourceIp: string | undefined
+  ): boolean {
     if (!local) return true
     if (!sameManagementIdentity(local, incoming)) return false
 
