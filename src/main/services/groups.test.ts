@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
-import { MSG_TYPES, LIMITS, type Envelope, type GroupMeta, type GroupPayload, type MsgPayload } from '../../shared/protocol'
-import type { ConversationView, GroupPatch } from '../../shared/ipc'
+import { MSG_TYPES, LIMITS, MENTION_ALL, type Envelope, type GroupMeta, type GroupPayload, type MsgPayload } from '../../shared/protocol'
+import type { ConversationView, GroupPatch, MessageView } from '../../shared/ipc'
 import { decode, encode, makeEnvelope } from '../net/codec'
 import type { Messenger, SendOutcome } from '../net/messenger'
 import type { ConvRepo } from '../store/conv-repo'
@@ -24,10 +24,16 @@ class FakeMessenger extends EventEmitter {
 }
 
 class FakeConvRepo {
+  readonly mentioned: string[] = []
+
   bump(): void {}
   incUnread(): void {}
   ensureGroup(groupId: string): string {
     return `group:${groupId}`
+  }
+
+  markMentioned(convId: string): void {
+    this.mentioned.push(convId)
   }
 
   list(): ConversationView[] {
@@ -776,6 +782,75 @@ function groupInfos(messenger: FakeMessenger): Envelope[] {
     .filter((s) => s.env.type === 'group' && (s.env.payload as GroupPayload).op === 'info')
     .map((s) => s.env)
 }
+
+describe('GroupsService @所有人（决议 #318）', () => {
+  function setup(members: string[]) {
+    const messenger = new FakeMessenger()
+    const convRepo = new FakeConvRepo()
+    const msgRepo = new FakeMsgRepo()
+    const groupRepo = new FakeGroupRepo()
+    const svc = new GroupsService({
+      selfId: 'node-self',
+      messenger: messenger as unknown as Messenger,
+      convRepo: convRepo as unknown as ConvRepo,
+      msgRepo: msgRepo as unknown as MsgRepo,
+      groupRepo: groupRepo as unknown as GroupRepo,
+      getSelfIp: () => '10.0.0.1'
+    })
+    const group = svc.createGroup('全员组', members)!
+    return { svc, messenger, convRepo, msgRepo, group }
+  }
+
+  it('发送放行 @all 保留值并剔除自己与未入群 ID', () => {
+    const { svc, messenger, group } = setup(['node-a', 'node-b'])
+    svc.sendText(group.groupId, '@所有人 开会', [MENTION_ALL, 'node-ghost', 'node-a', 'node-a'])
+
+    const payloads = messenger.sent
+      .filter((item) => item.env.type === 'msg')
+      .map((item) => item.env.payload as MsgPayload)
+    expect(payloads).toHaveLength(2)
+    expect(payloads.every((payload) => payload.kind === 'group-text')).toBe(true)
+    expect(payloads[0]).toMatchObject({ mentions: [MENTION_ALL, 'node-a'] })
+  })
+
+  it('收端遇到 @all 视同被 @，标记会话并置消息 mentioned', () => {
+    const { svc, messenger, convRepo, group } = setup(['node-a'])
+    const events: MessageView[] = []
+    svc.on('message', (view: MessageView) => events.push(view))
+
+    const env = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-a', {
+      kind: 'group-text',
+      text: '@所有人 开会',
+      groupId: group.groupId,
+      groupRev: 1,
+      mentions: [MENTION_ALL]
+    })
+    messenger.emit('incoming', env, { address: '10.0.0.2' })
+
+    expect(convRepo.mentioned).toEqual([`group:${group.groupId}`])
+    expect(events).toHaveLength(1)
+    expect(events[0].mentioned).toBe(true)
+  })
+
+  it('不在 mentions 里的成员收消息不标红', () => {
+    const { svc, messenger, convRepo, group } = setup(['node-a'])
+    const events: MessageView[] = []
+    svc.on('message', (view: MessageView) => events.push(view))
+
+    const env = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-a', {
+      kind: 'group-text',
+      text: '普通消息',
+      groupId: group.groupId,
+      groupRev: 1,
+      mentions: ['node-other']
+    })
+    messenger.emit('incoming', env, { address: '10.0.0.2' })
+
+    expect(convRepo.mentioned).toEqual([])
+    expect(events).toHaveLength(1)
+    expect(events[0].mentioned).toBeUndefined()
+  })
+})
 
 describe('GroupsService 群变更系统提示（决议 #87/#241/#242/#243）', () => {
   function member(

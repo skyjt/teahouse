@@ -19,6 +19,7 @@ import { emojiAdvanceWidth, fontOfStyle, setTextMeasurer } from '../utils/emoji-
 import { emojiToTwemojiCode, twemojiUrl } from '../utils/twemoji-assets'
 import { isImeCompositionKey } from '../utils/ime'
 import { isPlainEscape } from '../utils/escape'
+import { filterMentionCandidates, detectMentionInsertion, hasMentionAllToken, matchesMentionAll, parseMentionQuery, stepMentionIndex } from '../utils/mention-picker'
 import {
   TABLE_PASTE_HINT_MS,
   draftWithoutTablePaste,
@@ -57,6 +58,7 @@ import { vCachedImage } from '../directives/cached-image'
 import type { PkGame } from '../../../shared/pk'
 import {
   CAPS,
+  MENTION_ALL,
   NUDGE_MIN_INTERVAL_MS,
   RECALL_WINDOW_MS,
   TEXT_TCP_LIMIT,
@@ -169,6 +171,9 @@ const showCabinet = ref(false)
 const showMentionPicker = ref(false)
 const mentionIds = ref<string[]>([])
 const pendingMentionAt = ref<number | null>(null)
+const mentionQuery = ref('')
+const mentionActiveIndex = ref(0)
+const mentionPickerEl = ref<HTMLElement | null>(null)
 const loadingEarlier = ref(false)
 const scrollArea = ref<HTMLElement | null>(null)
 const msgsContent = ref<HTMLElement | null>(null)
@@ -345,6 +350,23 @@ const nudgeToolTip = computed(() => {
 const mentionMembers = computed(() =>
   group.value ? group.value.members.filter((id) => id !== chatStore.selfId) : []
 )
+/** 候选展示名：真实成员用备注优先显示名，保留值用文案（决议 #318） */
+function mentionLabel(id: string): string {
+  return id === MENTION_ALL ? tr('所有人') : peersStore.nameOf(id)
+}
+// 键盘导航 + 实时过滤（决议 #318）：按备注与昵称做包含匹配，显示名（备注优先）不变；
+// @所有人（决议 #318）仅在查询命中「所有人 / 全体 / all / everyone」时作为首项出现
+const mentionCandidates = computed(() => {
+  const members = filterMentionCandidates(
+    mentionMembers.value,
+    (id) => {
+      const p = peersStore.byId(id)
+      return p ? `${p.remark} ${p.nick}` : peersStore.nameOf(id)
+    },
+    mentionQuery.value
+  )
+  return matchesMentionAll(mentionQuery.value) ? [MENTION_ALL, ...members] : members
+})
 const inputPlaceholder = computed(() => {
   if (!canSend.value) return tr('你已不在该讨论组，无法发言')
   return settings.value?.sendKey === 'ctrlEnter'
@@ -438,10 +460,8 @@ function onDocumentPointerDown(event: MouseEvent): void {
 function onEscape(event: KeyboardEvent): void {
   if (!isPlainEscape(event, inputComposing.value) || document.querySelector('[aria-modal="true"]')) return
   if (msgMenu.value) msgMenu.value = null
-  else if (showMentionPicker.value) {
-    showMentionPicker.value = false
-    pendingMentionAt.value = null
-  } else if (showEmoji.value) showEmoji.value = false
+  else if (showMentionPicker.value) closeMentionPicker()
+  else if (showEmoji.value) showEmoji.value = false
   else if (showPk.value) showPk.value = false
   else if (showPeerProfile.value) closePeerProfile()
   else return
@@ -455,6 +475,7 @@ onMounted(async () => {
   window.addEventListener('focus', refreshScreenAvailability)
   document.addEventListener('keydown', onEscape)
   document.addEventListener('mousedown', onDocumentPointerDown)
+  document.addEventListener('selectionchange', syncMentionQuery)
   refreshInputFont()
   // 空白字形字体就绪前测得的是系统字符宽——就绪后清缓存重测，镜像槽宽收敛到 1.3em
   void document.fonts
@@ -494,6 +515,7 @@ onUnmounted(() => {
   bottomKeeper?.disconnect()
   bottomKeeper = null
   document.removeEventListener('mousedown', onDocumentPointerDown)
+  document.removeEventListener('selectionchange', syncMentionQuery)
   if (historySearchTimer) clearTimeout(historySearchTimer)
   if (peerProfileSavedTimer) clearTimeout(peerProfileSavedTimer)
   if (nudgeFeedbackTimer) clearTimeout(nudgeFeedbackTimer)
@@ -514,7 +536,7 @@ watch(
     // 文件柜面板跟着会话走：留着会直接挂到新对端身上，对方离线 / 不支持时
     // 顶部按钮已经灰掉、面板却还开着报错，状态自相矛盾（决议 #278）
     showCabinet.value = false
-    showMentionPicker.value = false
+    closeMentionPicker()
     showHistorySearch.value = false
     closePeerProfile()
     mentionIds.value = []
@@ -529,12 +551,16 @@ watch(
 
 watch([historyQuery, historyKind, historyFrom, historyTo], () => scheduleHistorySearch())
 
-watch(draft, () => {
+watch(draft, (next, prev) => {
   void nextTick(syncInputMirrorScroll)
   // 用户一改草稿，捕获的表格素材就与输入框对不上了，直接收起提示条（决议 #270）
   if (tablePasteHint.value && !tablePasteHintIntact(draft.value, tablePasteHint.value)) {
     clearTablePasteHint()
   }
+  // 中文输入法上屏的 @ 在 keydown 会被 IME 保护拦下，改从输入值变化识别（决议 #318）
+  if (openMentionFromInsertion(prev, next)) return
+  // 草稿变化后复核 @ 令牌：查询实时过滤，删掉 @ 或输入空白即收起（决议 #318）
+  if (showMentionPicker.value) void nextTick(syncMentionQuery)
 })
 
 watch(
@@ -1043,12 +1069,16 @@ async function send(): Promise<void> {
   const text = draft.value.trim()
   if (!text || overLimit.value || !canSend.value) return
   const mentions = isGroup.value
-    ? [...new Set(mentionIds.value)].filter((id) => text.includes(`@${peersStore.nameOf(id)}`))
+    ? [...new Set(mentionIds.value)].filter((id) =>
+        id === MENTION_ALL
+          ? hasMentionAllToken(text)
+          : text.includes(`@${peersStore.nameOf(id)}`)
+      )
     : []
   const id = replyToId.value ? replyToId.value : undefined
   draft.value = ''
   mentionIds.value = []
-  showMentionPicker.value = false
+  closeMentionPicker()
   replyToId.value = null
   await chatStore.send(text, mentions, id)
 }
@@ -1144,12 +1174,87 @@ async function sendPk(game: PkGame): Promise<void> {
   await chatStore.sendPk(game)
 }
 
+/** 输入值里出现新插入的 @/＠ 时打开面板；中文输入法下不经过按键分流（决议 #318） */
+function openMentionFromInsertion(prev: string, next: string): boolean {
+  if (!isGroup.value || !canSend.value || mentionMembers.value.length === 0) return false
+  const at = detectMentionInsertion(prev, next, inputSelectionRange().start)
+  if (at === null) return false
+  pendingMentionAt.value = at
+  mentionQuery.value = ''
+  mentionActiveIndex.value = 0
+  showMentionPicker.value = true
+  return true
+}
+
+/** 收起 @ 面板并复位键盘导航状态（决议 #318） */
+function closeMentionPicker(): void {
+  showMentionPicker.value = false
+  pendingMentionAt.value = null
+  mentionQuery.value = ''
+  mentionActiveIndex.value = 0
+}
+
+/** 复核 @ 到光标之间的令牌：查询实时过滤，令牌失效（删 @ / 越界 / 空白）即收起 */
+function syncMentionQuery(): void {
+  if (!showMentionPicker.value || inputComposing.value) return
+  const at = pendingMentionAt.value
+  if (at === null) {
+    closeMentionPicker()
+    return
+  }
+  const { start, end } = inputSelectionRange()
+  const query = start === end ? parseMentionQuery(draft.value, at, start) : null
+  if (query === null) {
+    closeMentionPicker()
+    return
+  }
+  if (query === mentionQuery.value) return
+  mentionQuery.value = query
+  mentionActiveIndex.value = 0
+}
+
+function scrollMentionActiveIntoView(): void {
+  mentionPickerEl.value?.querySelector('button.active')?.scrollIntoView({ block: 'nearest' })
+}
+
+function moveMentionActive(delta: 1 | -1): void {
+  const total = mentionCandidates.value.length
+  if (total === 0) return
+  mentionActiveIndex.value = stepMentionIndex(mentionActiveIndex.value, delta, total)
+  void nextTick(scrollMentionActiveIntoView)
+}
+
+function confirmMention(): void {
+  const candidates = mentionCandidates.value
+  if (candidates.length === 0) return
+  const index = Math.min(Math.max(mentionActiveIndex.value, 0), candidates.length - 1)
+  insertMention(candidates[index])
+}
+
 function onKeydown(event: KeyboardEvent): void {
   if (isImeCompositionKey(event, inputComposing.value)) return
+  // 原生选区事件可能尚未派发：每次按键先校验，尤其不能让 Enter 使用旧候选。
+  syncMentionQuery()
   if (event.key === '@' && isGroup.value && canSend.value && mentionMembers.value.length > 0) {
     pendingMentionAt.value = inputSelectionRange().start
+    mentionQuery.value = ''
+    mentionActiveIndex.value = 0
     showMentionPicker.value = true
     return
+  }
+  if (showMentionPicker.value) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (mentionCandidates.value.length > 0) {
+        event.preventDefault()
+        moveMentionActive(event.key === 'ArrowDown' ? 1 : -1)
+      }
+      return
+    }
+    if (event.key === 'Enter' && mentionCandidates.value.length > 0) {
+      event.preventDefault()
+      confirmMention()
+      return
+    }
   }
   if (event.key !== 'Enter') return
   const modified = event.ctrlKey || event.metaKey
@@ -1179,13 +1284,16 @@ function onInputCompositionEnd(): void {
 }
 
 function insertMention(nodeId: string): void {
-  const name = peersStore.nameOf(nodeId)
+  if (inputComposing.value) return
+  syncMentionQuery()
+  if (!showMentionPicker.value || !mentionCandidates.value.includes(nodeId)) return
+  const name = mentionLabel(nodeId)
   const at = pendingMentionAt.value ?? draft.value.length
-  const end = Math.max(at, inputSelectionRange().start)
+  // 光标在查询串中间时替换整个令牌，保留其后的空白与正文。
+  const end = at + 1 + (draft.value.slice(at + 1).match(/^\S*/)?.[0].length ?? 0)
   draft.value = `${draft.value.slice(0, at)}@${name} ${draft.value.slice(end)}`
   mentionIds.value = [...new Set([...mentionIds.value, nodeId])]
-  showMentionPicker.value = false
-  pendingMentionAt.value = null
+  closeMentionPicker()
   void nextTick(() => {
     const pos = at + name.length + 2
     focusInput()
@@ -2125,14 +2233,25 @@ async function onDrop(event: DragEvent): Promise<void> {
           </span>
         </span>
       </div>
-      <div v-if="showMentionPicker" class="mention-picker">
+      <div
+        v-if="showMentionPicker"
+        ref="mentionPickerEl"
+        class="mention-picker"
+        role="listbox"
+        :aria-label="tr('选择要 @ 的成员')"
+      >
+        <div v-if="mentionCandidates.length === 0" class="mention-empty">{{ tr('没有匹配的成员') }}</div>
         <button
-          v-for="id in mentionMembers"
+          v-for="(id, index) in mentionCandidates"
           :key="id"
           type="button"
+          role="option"
+          :aria-selected="index === mentionActiveIndex"
+          :class="{ active: index === mentionActiveIndex }"
+          @mouseenter="mentionActiveIndex = index"
           @mousedown.prevent="insertMention(id)"
         >
-          {{ peersStore.nameOf(id) }}
+          {{ mentionLabel(id) }}
         </button>
       </div>
       <div v-if="tablePasteHint" class="table-paste-hint" role="status" aria-live="polite">
@@ -2201,6 +2320,8 @@ async function onDrop(event: DragEvent): Promise<void> {
           :placeholder="inputPlaceholder"
           @update:model-value="onWin7EditorValue"
           @keydown="onKeydown"
+          @keyup="syncMentionQuery"
+          @mouseup="syncMentionQuery"
           @paste="onPaste"
           @scroll="syncInputMirrorScroll"
           @compositionstart="onInputCompositionStart"
@@ -2215,6 +2336,8 @@ async function onDrop(event: DragEvent): Promise<void> {
           :disabled="!canSend"
           :placeholder="inputPlaceholder"
           @keydown="onKeydown"
+          @keyup="syncMentionQuery"
+          @mouseup="syncMentionQuery"
           @paste="onPaste"
           @scroll="syncInputMirrorScroll"
           @compositionstart="onInputCompositionStart"
@@ -2369,8 +2492,13 @@ async function onDrop(event: DragEvent): Promise<void> {
   font-size: 13px;
   cursor: pointer;
 }
-.mention-picker button:hover {
+.mention-picker button:is(:hover, .active) {
   background: var(--surface-hover);
+}
+.mention-empty {
+  padding: 7px 10px;
+  color: var(--text-3);
+  font-size: 12px;
 }
 /* 表格粘贴提示条（决议 #270）：粘贴只插入文本，这条给出"改发图片"的入口，可随时忽略 */
 .table-paste-hint {

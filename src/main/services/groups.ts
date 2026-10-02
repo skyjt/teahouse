@@ -6,6 +6,7 @@ import { EventEmitter } from 'node:events'
 import {
   GROUP_MAX_MEMBERS,
   LIMITS,
+  MENTION_ALL,
   MSG_TYPES,
   TEXT_TCP_LIMIT,
   isAvatarHash,
@@ -234,8 +235,9 @@ export class GroupsService extends EventEmitter {
     const trimmed = text.trim()
     if (!meta || !meta.members.includes(this.deps.selfId) || !trimmed) return null
     if (Buffer.byteLength(trimmed, 'utf8') > TEXT_TCP_LIMIT) return null
+    // @所有人（决议 #318）是保留值，不参与成员合法性过滤；真实成员 ID 仍须在群里且排除自己
     const cleanMentions = [...new Set(mentions)]
-      .filter((id) => id !== this.deps.selfId && meta.members.includes(id))
+      .filter((id) => id === MENTION_ALL || (id !== this.deps.selfId && meta.members.includes(id)))
       .slice(0, GROUP_MAX_MEMBERS)
 
     const convId = this.deps.convRepo.ensureGroup(groupId)
@@ -356,7 +358,9 @@ export class GroupsService extends EventEmitter {
     if (inserted) {
       this.deps.convRepo.bump(convId, ts)
       this.deps.convRepo.incUnread(convId)
-      const mentioned = Array.isArray(payload.mentions) && payload.mentions.includes(this.deps.selfId)
+      const mentioned =
+        Array.isArray(payload.mentions) &&
+        (payload.mentions.includes(this.deps.selfId) || payload.mentions.includes(MENTION_ALL))
       if (mentioned) this.deps.convRepo.markMentioned(convId)
       const row = this.deps.msgRepo.get(env.id)
       if (row) {
