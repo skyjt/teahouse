@@ -21,6 +21,8 @@ export default defineConfig({
       assetsInlineLimit(file) {
         // 单色品牌图标独立输出，避免 SVG 缩小后内联导致主窗静态 JS 超预算。
         if (file.endsWith('/assets/brand/icon-macos-menubar-outline.svg')) return false
+        // 本地 emoji SVG 由 img 按需读取，避免把全部图形数据解析进每个窗口的 JS 闭包。
+        if (file.includes('/assets/twemoji/') && file.endsWith('.svg')) return false
       }
     },
     plugins: [

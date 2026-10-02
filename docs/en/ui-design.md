@@ -338,3 +338,12 @@ The confirmation uses the Chrome 108 native dialog focus scope. Global Escape ha
 Keep the seven navigation groups. Add a compact section under About, with Export diagnostics as the primary action and Copy environment info as secondary. Explain local-only export and excluded chat/file content. An unchecked Include real network addresses option applies to this window only; copied information always stays redacted. Use a native save dialog, a disabled busy action, inline accessible success/error feedback and Reveal in folder after success. Cancellation is silent. Ask for occurrence time and steps, and bundles from both sides for transfer problems. Reuse theme tokens; wrap and scroll at 640×480, without effects or a live dashboard.
 
 - 2026-09-17: Decision #315, application **0.60.0**; diagnostics design recorded before implementation.
+
+
+### PR #42 integration (decision #318, v0.61.0)
+
+Preserves nameGXF's mention keyboard navigation, remark/nickname filtering, committed IME @ detection and mention-everyone support. Only the complete keywords 所有人 / 全体 / all / everyone expose the everyone candidate, so a short name query cannot select everyone by default. Arrow keys wrap; Enter confirms only a currently valid token. Caret/selection changes invalidate the picker, and mouse confirmation also revalidates the range without overwriting following prose. Composition keys and keyCode 229 remain native; both @ and full-width ＠ can open the picker.
+
+Any current group member may mention everyone. Delivery remains per-member unicast excluding the sender; former members cannot send. The reserved mentions value `"@all"` marks the conversation and emphasizes notification titles while preserving mute, notification and focused-window gates. Older clients, including v0.60.3, receive the text without everyone emphasis. No new field, capability, database schema, dependency or external request. Editing the label into a different token removes the outgoing broadcast marker.
+
+Official repository, download, issue and source links remain skyjt/teahouse; fork migration is excluded. This feature increments v0.60.3 to v0.61.0. The original PR's #308–#310 conflict with upstream decision numbers, so this integration uses #318. Twemoji SVGs are packaged as separate local assets loaded on demand, reducing inline graphics parsed by each window without raising JS/CSS budgets or changing Electron 22 / Chrome 108.
