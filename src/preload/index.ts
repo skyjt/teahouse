@@ -237,6 +237,7 @@ const api: PantryApi = {
   setPeerRemark: (nodeId: string, remark: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.peersSetRemark, nodeId, remark),
   openSettings: (): Promise<void> => ipcRenderer.invoke(IpcChannels.uiOpenSettings),
+  settingsReady: (): void => ipcRenderer.send(IpcChannels.uiSettingsReady),
   openCabinet: (peerId?: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.uiOpenCabinet, peerId ?? null),
   createGroup: (
