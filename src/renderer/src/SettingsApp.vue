@@ -290,6 +290,9 @@ onUnmounted(() => {
 async function reload(): Promise<void> {
   const s = await window.pantry.getSettings()
   syncForm(s)
+  // Vue 更新主题后再跨过一次绘制；窗口保持隐藏直到深/浅色首帧就绪。
+  await nextTick()
+  requestAnimationFrame(() => requestAnimationFrame(() => window.pantry.settingsReady()))
   conversations.value = await window.pantry.listConversations()
   transfers.value = await window.pantry.listTransfers(30)
 }

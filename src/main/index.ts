@@ -2649,7 +2649,8 @@ if (!gotLock) {
   })
 
   ipcMain.handle(IpcChannels.uiOpenSettings, () => {
-    openSettingsWindow(mainWindow, settingsView().fontScale)
+    const { fontScale, theme } = settingsView()
+    openSettingsWindow(mainWindow, fontScale, theme)
   })
 
   // 文件柜（决议 #283，形态改为主窗页签见 #284）：把主窗切到文件柜页签，

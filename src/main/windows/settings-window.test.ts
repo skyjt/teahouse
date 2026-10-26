@@ -78,7 +78,7 @@ describe('设置窗口模态层级', () => {
     const parent = makeParent()
     const { openSettingsWindow } = await loadSettingsWindow('win32')
 
-    openSettingsWindow(parent as never, 125)
+    openSettingsWindow(parent as never, 125, 'dark')
 
     const instance = electronMock.instances[0]
     expect(instance.options.parent).toBe(parent)
@@ -99,10 +99,14 @@ describe('设置窗口模态层级', () => {
     const parent = makeParent()
     const { openSettingsWindow } = await loadSettingsWindow('linux')
 
-    openSettingsWindow(parent as never, 100)
-    openSettingsWindow(parent as never, 110)
+    openSettingsWindow(parent as never, 100, 'dark')
 
     const instance = electronMock.instances[0]
+    instance.handlers.get('ready-to-show')?.()
+    instance.webContents.handlers.get('ipc-message')?.({}, 'ui:settings-ready')
+    instance.show.mockClear()
+    openSettingsWindow(parent as never, 110, 'dark')
+
     expect(electronMock.instances).toHaveLength(1)
     expect(parent.webContents.send).toHaveBeenLastCalledWith('ui:settings-window-state', true)
     expect(instance.show).toHaveBeenCalledTimes(1)
@@ -114,12 +118,73 @@ describe('设置窗口模态层级', () => {
     const parent = makeParent()
     const { openSettingsWindow } = await loadSettingsWindow('darwin')
 
-    openSettingsWindow(parent as never, 100)
+    openSettingsWindow(parent as never, 100, 'light')
 
     const instance = electronMock.instances[0]
     expect(instance.options.modal).toBeUndefined()
     expect(instance.options.hasShadow).toBe(true)
     expect(instance.options.titleBarStyle).toBe('hiddenInset')
     expect(parent.webContents.send).not.toHaveBeenCalled()
+  })
+
+  it.each(['light', 'dark'] as const)('使用 %s 背景并等待主题绘制后显示', async (theme) => {
+    const { openSettingsWindow } = await loadSettingsWindow('win32')
+    openSettingsWindow(makeParent() as never, 100, theme)
+    const instance = electronMock.instances[0]
+    expect(instance.options.show).toBe(false)
+    expect(instance.options.backgroundColor).toBe(theme === 'dark' ? '#171e29' : '#ffffff')
+
+    instance.handlers.get('ready-to-show')?.()
+    expect(instance.show).not.toHaveBeenCalled()
+    instance.webContents.handlers.get('ipc-message')?.({}, 'unrelated:message')
+    expect(instance.show).not.toHaveBeenCalled()
+
+    instance.webContents.handlers.get('ipc-message')?.({}, 'ui:settings-ready')
+    expect(instance.show).toHaveBeenCalledTimes(1)
+    instance.webContents.handlers.get('ipc-message')?.({}, 'ui:settings-ready')
+    expect(instance.show).toHaveBeenCalledTimes(1)
+  })
+
+  it('主题先就绪时仍等待原生窗口 ready-to-show', async () => {
+    const { openSettingsWindow } = await loadSettingsWindow('win32')
+    openSettingsWindow(null, 100, 'dark')
+    const instance = electronMock.instances[0]
+    instance.webContents.handlers.get('ipc-message')?.({}, 'ui:settings-ready')
+    expect(instance.show).not.toHaveBeenCalled()
+    instance.handlers.get('ready-to-show')?.()
+    expect(instance.show).toHaveBeenCalledTimes(1)
+  })
+
+  it('加载中重复打开不会提前显示或聚焦', async () => {
+    const { openSettingsWindow } = await loadSettingsWindow('win32')
+    openSettingsWindow(null, 100, 'dark')
+    const instance = electronMock.instances[0]
+    instance.handlers.get('ready-to-show')?.()
+    openSettingsWindow(null, 125, 'dark')
+    expect(electronMock.instances).toHaveLength(1)
+    expect(instance.show).not.toHaveBeenCalled()
+    expect(instance.focus).not.toHaveBeenCalled()
+    expect(instance.webContents.setZoomFactor).toHaveBeenLastCalledWith(1.25)
+    instance.webContents.handlers.get('ipc-message')?.({}, 'ui:settings-ready')
+    expect(instance.show).toHaveBeenCalledTimes(1)
+  })
+
+  it('关闭后重开重新等待就绪，旧窗口回调不会显示新窗口', async () => {
+    const { openSettingsWindow } = await loadSettingsWindow('win32')
+    openSettingsWindow(null, 100, 'dark')
+    const previous = electronMock.instances[0]
+    previous.handlers.get('closed')?.()
+    openSettingsWindow(null, 100, 'light')
+    const current = electronMock.instances[1]
+
+    previous.handlers.get('ready-to-show')?.()
+    previous.webContents.handlers.get('ipc-message')?.({}, 'ui:settings-ready')
+    expect(previous.show).not.toHaveBeenCalled()
+    expect(current.show).not.toHaveBeenCalled()
+    expect(current.options.backgroundColor).toBe('#ffffff')
+    current.handlers.get('ready-to-show')?.()
+    expect(current.show).not.toHaveBeenCalled()
+    current.webContents.handlers.get('ipc-message')?.({}, 'ui:settings-ready')
+    expect(current.show).toHaveBeenCalledTimes(1)
   })
 })

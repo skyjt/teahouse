@@ -1,7 +1,7 @@
 import { tr } from '../../i18n'
 import { app, BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
-import { IpcEvents, type SettingsView } from '../../shared/ipc'
+import { IpcChannels, IpcEvents, type SettingsView } from '../../shared/ipc'
 import { resolveDevRendererUrl } from '../util/renderer-url'
 import { applyWindowZoom } from '../util/window-zoom'
 
@@ -12,6 +12,7 @@ const SETTINGS_WIDTH = 640
 const SETTINGS_HEIGHT = 480
 
 let win: BrowserWindow | null = null
+let readyToShow = false
 let currentFontScale: SettingsView['fontScale'] = 100
 
 /**
@@ -69,16 +70,20 @@ export function syncSettingsWindowZoom(fontScale: SettingsView['fontScale']): vo
 
 export function openSettingsWindow(
   parent: BrowserWindow | null,
-  fontScale: SettingsView['fontScale']
+  fontScale: SettingsView['fontScale'],
+  theme: SettingsView['theme']
 ): void {
   const activeParent = parent && !parent.isDestroyed() ? parent : null
   if (win && !win.isDestroyed()) {
     syncSettingsWindowZoom(fontScale)
     notifySettingsWindowState(activeParent, true)
-    win.show()
-    win.focus()
+    if (readyToShow) {
+      win.show()
+      win.focus()
+    }
     return
   }
+  readyToShow = false
   win = new BrowserWindow({
     width: SETTINGS_WIDTH,
     height: SETTINGS_HEIGHT,
@@ -87,6 +92,7 @@ export function openSettingsWindow(
     minimizable: false,
     maximizable: false,
     show: false,
+    backgroundColor: theme === 'dark' ? '#171e29' : '#ffffff',
     title: tr('设置 - 茶话间'),
     parent: activeParent ?? undefined,
     ...(process.platform !== 'darwin' && activeParent ? { modal: true } : {}),
@@ -109,10 +115,34 @@ export function openSettingsWindow(
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (event) => event.preventDefault())
   notifySettingsWindowState(activeParent, true)
-  win.once('ready-to-show', () => win?.show())
+  // ready-to-show 只代表 Chromium 已绘制，设置与主题的异步初始化可能尚未完成。
+  // 同时等待 renderer 的主题绘制信号，避免显示默认浅色首帧（#81）。
+  const settingsWindow = win
+  let nativeReady = false
+  let appearanceReady = false
+  const reveal = (): void => {
+    if (
+      !nativeReady || !appearanceReady || readyToShow ||
+      win !== settingsWindow || settingsWindow.isDestroyed()
+    ) return
+    readyToShow = true
+    settingsWindow.show()
+  }
+  win.once('ready-to-show', () => {
+    nativeReady = true
+    reveal()
+  })
+  win.webContents.on('ipc-message', (_event, channel) => {
+    if (channel !== IpcChannels.uiSettingsReady) return
+    appearanceReady = true
+    reveal()
+  })
   win.on('closed', () => {
     notifySettingsWindowState(activeParent, false)
-    win = null
+    if (win === settingsWindow) {
+      win = null
+      readyToShow = false
+    }
   })
 
   const rendererUrl = resolveDevRendererUrl(
