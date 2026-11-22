@@ -1,7 +1,8 @@
 {
   "name": "pantry",
   "productName": "茶话间",
-  "version": "0.64.3",
+  "desktopName": "pantry.desktop",
+  "version": "0.64.4",
   "description": "茶话间（Teahouse）—— 纯内网、基于 IP 的局域网即时通讯与文件传输工具",
   "license": "GPL-3.0-only",
   "private": true,

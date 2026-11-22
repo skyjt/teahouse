@@ -213,9 +213,7 @@ protocol.registerSchemesAsPrivileged([
 // 也不开放任何代理配置——代理对内网通信无意义，只会增加连接失败与信息泄漏面。
 app.commandLine.appendSwitch('no-proxy-server')
 
-// 运行时应用名固定为中文（决议 #60）：productName 已改 ASCII "Teahouse" 以保证
-// 安装路径无中文（/opt/Teahouse 等），但 userData 目录（已有用户数据所在）与
-// 系统通知标题必须保持「茶话间」——setName 必须在任何 getPath('userData') 之前。
+// 已有用户的默认数据目录按「茶话间」派生（决议 #60）。
 app.setName('茶话间')
 // Windows 通知/任务栏归属名（决议 #66）：不设则 Win10/11 的 toast 顶部显示默认
 // "electron.app.Teahouse"；设为 appId，与 NSIS 安装的快捷方式 AUMID 一致，显示为「茶话间」。
@@ -224,6 +222,12 @@ if (process.platform === 'win32') app.setAppUserModelId('com.pantry.app')
 // 本机双实例联调：PANTRY_USER_DATA 隔离数据目录（同时绕开单实例锁），见 README「开发」
 if (process.env['PANTRY_USER_DATA']) {
   app.setPath('userData', resolve(process.env['PANTRY_USER_DATA']))
+}
+
+if (process.platform === 'linux') {
+  // 先固定当前数据目录，再用桌面文件声明的 StartupWMClass 创建窗口。
+  app.setPath('userData', app.getPath('userData'))
+  app.setName('teahouse')
 }
 
 const gotLock = app.requestSingleInstanceLock()
