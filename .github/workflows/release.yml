@@ -395,7 +395,7 @@ jobs:
 
   macos-arm64:
     name: macOS arm64（Apple Silicon）
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: 拉取源码
         uses: actions/checkout@v4
