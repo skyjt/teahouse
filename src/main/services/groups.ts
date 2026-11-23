@@ -47,6 +47,7 @@ export interface GroupsDeps {
 
 export class GroupsService extends EventEmitter {
   private convsScheduled = false
+  private readonly lastReinviteRequest = new Map<string, number>()
 
   constructor(private readonly deps: GroupsDeps) {
     super()
@@ -379,14 +380,13 @@ export class GroupsService extends EventEmitter {
     if ((payload.kind !== 'group-text' && payload.kind !== 'pk') || !payload.groupId) return
     const meta = this.deps.groupRepo.get(payload.groupId)
     if (!meta || (payload.groupRev ?? 0) > meta.rev) {
-      void this.deps.messenger.sendReliable(
-        from,
-        makeEnvelope<GroupPayload>(MSG_TYPES.group, this.deps.selfId, {
-          op: 'need',
-          groupId: payload.groupId
-        })
-      )
+      this.requestGroupInfo(payload.groupId, from)
     }
+  }
+
+  private requestGroupInfo(groupId: string, from: string): void {
+    void this.deps.messenger.sendReliable(from,
+      makeEnvelope<GroupPayload>(MSG_TYPES.group, this.deps.selfId, { op: 'need', groupId }))
   }
 
   private onGroupCtl(env: Envelope, rinfo?: RemoteInfo): void {
@@ -394,9 +394,24 @@ export class GroupsService extends EventEmitter {
     if (payload.op === 'info') {
       const local = this.deps.groupRepo.get(payload.group.groupId)
       const incoming = normalizeGroupMeta(payload.group, local)
-      if (!this.canApplyRemoteInfo(local, incoming, env.from, rinfo?.address)) return
+      if (!this.canApplyRemoteInfo(local, incoming, env.from, rinfo?.address)) {
+        // 普通成员只能转发重邀线索。向本地已知管理者索取本人快照，再走相同入站校验。
+        const author = incoming.updatedBy
+        if (local && incoming.rev > local.rev && author !== env.from &&
+          !local.members.includes(this.deps.selfId) && incoming.members.includes(this.deps.selfId) &&
+          local.members.includes(env.from) && (author === local.ownerId || local.adminIds.includes(author)) &&
+          this.canApplyRemoteInfo(local, incoming, author, undefined)) {
+          const now = Date.now()
+          if (now - (this.lastReinviteRequest.get(local.groupId) ?? -Infinity) >= 10_000) {
+            this.lastReinviteRequest.set(local.groupId, now)
+            this.requestGroupInfo(local.groupId, author)
+          }
+        }
+        return
+      }
       const applied = this.deps.groupRepo.applyRemote(incoming)
       if (applied) {
+        this.lastReinviteRequest.delete(incoming.groupId)
         this.deps.convRepo.ensureGroup(incoming.groupId)
         this.insertGroupChangeTip(local, incoming, local?.members.includes(this.deps.selfId) ?? false)
         this.emitConvs()
