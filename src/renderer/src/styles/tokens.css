@@ -1,3 +1,6 @@
+/* Electron 22 的默认样式失效时，避免将文档标题和样式表显示在窗口内。 */
+head { display: none; }
+
 /* 雾蓝主题：结构表面保持纯色，颜色用于导航、选中和主操作。 */
 :root {
   color-scheme: light;

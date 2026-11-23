@@ -33,6 +33,7 @@ import {
 import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { basename, extname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   DEFAULT_CAPTURE_SHORTCUT,
   DEFAULT_SHOWHIDE_SHORTCUT,
@@ -175,6 +176,7 @@ import { canServeUpdates } from './util/release-format'
 import { measureUploadPaths } from './util/upload-measure'
 import { isWindows7 } from './util/windows-version'
 import { RemoteViewWindows } from './windows/remote-view-window'
+import { showMainWindowOnLoad } from './windows/main-window-startup'
 import type { ScreenPayload } from '../shared/protocol'
 import { applyWindowZoom } from './util/window-zoom'
 import {
@@ -1425,8 +1427,15 @@ if (!gotLock) {
       netState.error = err instanceof Error ? err.message : String(err)
       console.error('[net] UDP 启动失败，进入离线模式：', netState.error)
     }
-    netState.transfer = files?.availability() ?? { available: false, port: tcpPort }
-    mainWindow?.webContents.send(IpcEvents.netState, netState)
+    mainWindow?.webContents.send(IpcEvents.netState, currentNetState())
+  }
+
+  function currentNetState(): NetState {
+    if (tcpStatus === 'starting') return { ...netState }
+    return {
+      ...netState,
+      transfer: files?.availability() ?? { available: false, port: tcpPort, reason: 'database-unavailable' }
+    }
   }
 
   function reportCaptureFailure(
@@ -1482,7 +1491,7 @@ if (!gotLock) {
     const wasVisible = captureMainWindow?.isVisible() ?? false
     // Electron 22 在 ARM64 Wayland 枚举屏幕时可能触发原生 SIGSEGV，JS 无法捕获；保留系统截图粘贴退路。
     if (WAYLAND_SESSION && process.arch === 'arm64') {
-      reportCaptureFailure('screen-unavailable', wasVisible)
+      reportCaptureFailure('arm64-wayland', wasVisible)
       return
     }
     try {
@@ -1637,7 +1646,6 @@ if (!gotLock) {
       }
     })
 
-    mainWindow.once('ready-to-show', () => mainWindow?.show())
     // 关窗 = 进托盘常驻（F-SYS-1）；托盘不可用的桌面环境降级为直接退出
     mainWindow.on('close', (event) => {
       if (isQuitting || !tray || appState?.config.closeToTray === false) return
@@ -1655,11 +1663,16 @@ if (!gotLock) {
       '',
       app.isPackaged
     )
-    if (rendererUrl) {
-      void mainWindow.loadURL(rendererUrl)
-    } else {
-      void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-    }
+    const win = mainWindow
+    showMainWindowOnLoad(win,
+      () => rendererUrl ? win.loadURL(rendererUrl) : win.loadFile(join(__dirname, '../renderer/index.html')),
+      () => isQuitting,
+      () => {
+        if (process.env['PANTRY_SMOKE']) return app.exit(1)
+        dialog.showErrorBox(tr('茶话间启动失败'),
+          tr('主窗口未能加载。诊断日志位于 {0}', { 0: join(app.getPath('userData'), 'logs') }))
+        app.quit()
+      })
   }
 
   // ---- IPC（只做参数校验与转发，业务禁入此层 —— tech-design §3） ----
@@ -1751,9 +1764,7 @@ if (!gotLock) {
     }
   })
 
-  ipcMain.handle(IpcChannels.netState, (): NetState => ({
-    ...netState, transfer: tcpStatus === 'starting' ? undefined : files?.availability() ?? { available: false, port: tcpPort }
-  }))
+  ipcMain.handle(IpcChannels.netState, currentNetState)
   ipcMain.handle(IpcChannels.transferImageFailed, (_event, transferId: unknown) => {
     if (typeof transferId === 'string' && transferId.length > 0 && transferId.length <= 64) {
       files?.reportImageDecodeFailure(transferId)
@@ -2130,11 +2141,20 @@ if (!gotLock) {
     return broadcastSettings()
   })
 
-  ipcMain.handle(IpcChannels.shareMyReveal, (): boolean => {
+  ipcMain.handle(IpcChannels.shareMyReveal, async (): Promise<boolean> => {
     const root = appState?.config.fileCabinet.root ?? ''
-    if (root.length === 0 || !existsSync(root)) return false
-    shell.openPath(root).catch(() => undefined)
-    return true
+    if (!root) return false
+    try {
+      if (!(await stat(root)).isDirectory()) return false
+      if (process.platform === 'linux') {
+        // Electron 22 的 openPath 会在主线程等待 xdg-open 退出。
+        await shell.openExternal(pathToFileURL(root).href)
+        return true
+      }
+      return (await shell.openPath(root)) === ''
+    } catch {
+      return false
+    }
   })
 
   ipcMain.handle(IpcChannels.shareGrantList, (): ShareGrantView[] => shareGrantViews())
@@ -3192,18 +3212,36 @@ if (!gotLock) {
     void startNet()
     registerGlobalShortcuts()
 
-    // 冒烟模式：窗口能起、1.5s 后干净退出即算通过（tech-design §10 的 CI 烟测同款）
+    // 成品与开发环境走同一启动检查。窗口只创建但未挂载、SQLite 加载失败都应使 CI 失败。
     if (process.env['PANTRY_SMOKE']) {
-      setTimeout(() => {
-        isQuitting = true
-        app.quit()
-      }, 1500)
+      const timeout = setTimeout(() => {
+        console.error('[smoke] 主窗口或磁盘数据库未就绪，数据库状态:', databaseMode)
+        app.exit(1)
+      }, 30_000)
+      const check = async (): Promise<void> => {
+        const win = mainWindow
+        if (win?.isVisible() && !win.webContents.isCrashed() && databaseMode === 'file' &&
+          await win.webContents.executeJavaScript('window.pantry.getSettings().then(() => !!document.querySelector(".shell"))').catch(() => false)) {
+          clearTimeout(timeout)
+          console.log('[smoke] 主窗口已显示，界面已挂载，磁盘数据库就绪')
+          app.quit()
+        } else {
+          setTimeout(() => void check(), 150)
+        }
+      }
+      void check()
     }
   })
 
   app.on('activate', () => showMainWindow()) // macOS 点 Dock 唤起
 
-  app.on('will-quit', () => globalShortcut.unregisterAll())
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll()
+    // 窗口销毁后再关闭数据库；诊断日志刷盘期间仍可能收到渲染进程的 IPC。
+    try { db?.close() }
+    catch (err) { console.error('[store] 关闭数据库失败：', err) }
+    db = null
+  })
 
   let diagnosticQuit = false
   let diagnosticClosing = false
@@ -3235,11 +3273,9 @@ if (!gotLock) {
     void files?.stop()
     try {
       if (registry && peersRepo) peersRepo.upsertMany(registry.values()) // 离场前最后一次落库
-      db?.close()
     } catch (err) {
       console.error('[store] 退出落库失败：', err)
     }
-    db = null
     let timer: ReturnType<typeof setTimeout>
     void Promise.race([diagnostics.close(), new Promise<void>(resolve => { timer = setTimeout(resolve, 2000) })])
       .finally(() => { clearTimeout(timer); diagnosticQuit = true; app.quit() })

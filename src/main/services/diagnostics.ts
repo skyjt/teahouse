@@ -25,7 +25,7 @@ const VALUES = new Set([
   'error', 'rejection', 'vue', 'bootstrap', 'unresponsive', 'responsive', 'load',
   'socket-error', 'closed', 'write-error', 'part-read-error', 'hash-mismatch', 'size-mismatch',
   'path-escape', 'bad-frame', 'bad-json', 'frame-too-large', 'not-found', 'forbidden',
-  'screen-unavailable', 'window-hide-failed', 'capture-failed', 'capture-window-failed',
+  'screen-unavailable', 'arm64-wayland', 'window-hide-failed', 'capture-failed', 'capture-window-failed',
   ...SCREEN_END_REASONS, ...SCREEN_REJECT_REASONS
 ])
 const ERROR_NAMES = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError'])

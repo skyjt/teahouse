@@ -25,7 +25,7 @@ import RailNavIcon from './components/RailNavIcon.vue'
 import WindowControls from './components/WindowControls.vue'
 import WindowDragStrip from './components/WindowDragStrip.vue'
 import { useGroupsStore } from './stores/groups'
-import type { PeerView } from '../../shared/ipc'
+import type { NetState, PeerView } from '../../shared/ipc'
 import { applyAppearance } from './utils/appearance'
 import { applyPerformanceProfile } from './utils/performance-profile'
 import { isPlainEscape } from './utils/escape'
@@ -129,7 +129,15 @@ let stopScanProgress: (() => void) | null = null
 let stopCaptureFailed: (() => void) | null = null
 let stopTransferBlocked: (() => void) | null = null
 let stopNetState: (() => void) | null = null
-const blockedTransferPort = ref<number | null>(null)
+const blockedTransfer = ref<NetState['transfer']>(undefined)
+const transferWarning = computed(() => {
+  const state = blockedTransfer.value
+  if (!state) return ''
+  if (state.reason === 'database-unavailable') {
+    return tr('本地数据库未能打开，聊天和文件传输不可用。请在设置中导出诊断包。')
+  }
+  return tr('文件传输端口 {0} 不可用，无法发送文件、图片或文件夹。请检查端口占用或在设置中更换端口后重启。文字消息仍可使用。', { 0: state.port })
+})
 let scanProgressHideTimer: ReturnType<typeof setTimeout> | null = null
 let captureNoticeTimer: ReturnType<typeof setTimeout> | null = null
 let railHintTimer: ReturnType<typeof setTimeout> | null = null
@@ -346,13 +354,12 @@ function onMainKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(async () => {
-  stopTransferBlocked = window.pantry.onTransferSendBlocked((state) => { blockedTransferPort.value = state.port })
-  stopNetState = window.pantry.onNetState((state) => {
-    if (state.transfer) blockedTransferPort.value = state.transfer.available ? null : state.transfer.port
-  })
-  void window.pantry.getNetState().then((state) => {
-    if (state.transfer && !state.transfer.available) blockedTransferPort.value = state.transfer.port
-  })
+  stopTransferBlocked = window.pantry.onTransferSendBlocked((state) => { blockedTransfer.value = state })
+  const showNetState = ({ transfer }: NetState) => {
+    if (transfer) blockedTransfer.value = transfer.available ? undefined : transfer
+  }
+  stopNetState = window.pantry.onNetState(showNetState)
+  void window.pantry.getNetState().then(showNetState)
   // 先订阅再等待初始化 IPC，避免用户启动后立即点设置时错过遮罩状态。
   stopSettingsWindowState = window.pantry.onSettingsWindowState((open) => {
     settingsWindowOpen.value = open
@@ -683,17 +690,15 @@ onUnmounted(() => {
   </div>
   <Transition name="capture-toast">
     <div
-      v-if="captureNotice || blockedTransferPort !== null"
+      v-if="captureNotice || transferWarning"
       class="capture-toast"
       role="status"
       aria-live="assertive"
     >
       <PantryIcon name="warning" :size="18" />
-      <span>{{ blockedTransferPort !== null
-        ? tr('文件传输端口 {0} 不可用，无法发送文件、图片或文件夹。请检查端口占用或在设置中更换端口后重启。文字消息仍可使用。', { 0: blockedTransferPort })
-        : captureNotice?.message }}</span>
-      <button type="button" :aria-label="blockedTransferPort !== null ? tr('关闭') : tr('关闭截图提示')"
-        @click="blockedTransferPort = null; dismissCaptureFailure()">×</button>
+      <span>{{ transferWarning || captureNotice?.message }}</span>
+      <button type="button" :aria-label="transferWarning ? tr('关闭') : tr('关闭截图提示')"
+        @click="blockedTransfer = undefined; dismissCaptureFailure()">×</button>
     </div>
   </Transition>
   </NConfigProvider>
