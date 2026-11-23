@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWriteStream, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash, randomBytes } from 'node:crypto'
-import { createConnection, createServer, type Socket } from 'node:net'
+import { createConnection, createServer, Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
@@ -329,20 +329,26 @@ describe('transfer 数据面回环', () => {
 
   it('握手阶段和有效控制阶段分别应用可注入空闲超时', async () => {
     const limits: Partial<TransferServerLimits> = {
-      handshakeTimeoutMs: 30,
-      idleTimeoutMs: 45
+      handshakeTimeoutMs: 200,
+      idleTimeoutMs: 80
     }
     const server = new TransferServer(0, { resolve: () => null }, '127.0.0.1', undefined, limits)
     const port = await listenServer(server)
 
-    const silent = await connectSocket(port)
-    await expect(closesWithin(silent)).resolves.toBe(true)
+    const timeouts = vi.spyOn(Socket.prototype, 'setTimeout')
+    try {
+      const silent = await connectSocket(port)
+      await expect(closesWithin(silent, 2_000)).resolves.toBe(true)
+      expect(timeouts).toHaveBeenCalledWith(limits.handshakeTimeoutMs)
+      timeouts.mockClear()
 
-    const active = await connectSocket(port)
-    active.write(encodeFrame({ type: 'finish', transferId: 't-finished' }))
-    await delay(35)
-    expect(active.destroyed).toBe(false)
-    await expect(closesWithin(active, 200)).resolves.toBe(true)
+      const active = await connectSocket(port)
+      active.write(encodeFrame({ type: 'finish', transferId: 't-finished' }))
+      await expect(closesWithin(active, 2_000)).resolves.toBe(true)
+      expect(timeouts).toHaveBeenCalledWith(limits.idleTimeoutMs)
+    } finally {
+      timeouts.mockRestore()
+    }
   })
 
   it('畸形 finish 只关闭当前连接，后续合法连接仍可完成', async () => {
@@ -534,13 +540,14 @@ describe('transfer 数据面回环', () => {
     ).rejects.toThrow(/write-error/)
   })
 
-  it('已有 .part 时从断点续传并校验整文件哈希', async () => {
+  it.each(['partial', 'oversized'])('已有 %s 断点时完整接收并校验落盘内容', async (kind) => {
     const src = makeTmp()
     const dst = makeTmp()
     const body = randomBytes(256 * 1024)
     const half = Math.floor(body.length / 2)
     writeFileSync(join(src, 'resume.bin'), body)
-    writeFileSync(join(dst, 'resume.bin.part'), body.subarray(0, half))
+    const partial = kind === 'partial' ? body.subarray(0, half) : Buffer.concat([body, Buffer.from('old tail')])
+    writeFileSync(join(dst, 'resume.bin.part'), partial)
     const outgoing = new Map<string, OutgoingFile>([
       ['f1', { fileId: 'f1', absPath: join(src, 'resume.bin'), size: body.length }]
     ])
