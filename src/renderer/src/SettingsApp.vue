@@ -130,7 +130,7 @@ const updateCheckSummary = computed(() => {
   if (updateCheckKind.value === 'found') return tr('有新版')
   if (updateCheckKind.value === 'requesting') return tr('正在请求')
   if (updateCheckKind.value === 'requested') return tr('请求已发出')
-  if (updateCheckKind.value === 'none') return tr('已是最新')
+  if (updateCheckKind.value === 'none') return tr('未发现可用的内网更新源')
   if (updateCheckKind.value === 'error') return tr('检测失败')
   return tr('未检查')
 })

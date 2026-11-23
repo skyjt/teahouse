@@ -240,7 +240,7 @@ export interface NetState {
   /** 端口被占等启动失败原因；ok 时为空 */
   error: string
   /** TCP 监听独立于 UDP 消息；不可用时禁止发出文件 offer。 */
-  transfer?: { available: boolean; port: number }
+  transfer?: { available: boolean; port: number; reason?: 'database-unavailable' }
 }
 
 export type ScanProgressStatus = 'idle' | 'running' | 'done' | 'empty' | 'unavailable'
@@ -772,6 +772,7 @@ export type ProfileAvatarChoice =
 
 export type CaptureFailureReason =
   | 'window-hide-failed'
+  | 'arm64-wayland'
   | 'screen-unavailable'
   | 'image-empty'
   | 'unexpected'

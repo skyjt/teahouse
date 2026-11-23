@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { checkVersionConsistency } from './check-version-consistency.mjs'
+import { checkReleaseArtifacts, checkVersionConsistency } from './check-version-consistency.mjs'
 
 const roots = []
 
@@ -22,6 +23,36 @@ function fixture(packageVersion = '1.2.3', lockVersion = packageVersion) {
 }
 
 describe('checkVersionConsistency', () => {
+  it('发布前验证五份真实格式清单、十个安装包及其内容', async () => {
+    const dir = join(fixture(), 'artifacts')
+    const targets = {
+      'debian10-uos20-x64': ['linux-amd64.deb', 'linux-x86_64.AppImage'],
+      'debian10-uos20-arm64': ['linux-arm64.deb', 'linux-arm64.AppImage'],
+      'mac-arm64': ['mac-arm64.zip', 'mac-arm64.dmg'],
+      'win7-ia32': ['win-ia32-portable.exe', 'win-ia32-setup.exe'],
+      'win7-x64': ['win-x64-portable.exe', 'win-x64-setup.exe']
+    }
+    for (const [target, suffixes] of Object.entries(targets)) {
+      const folder = join(dir, target)
+      mkdirSync(folder, { recursive: true })
+      const lines = suffixes.map(suffix => {
+        const name = `Teahouse-1.2.3-${suffix}`
+        writeFileSync(join(folder, name), suffix)
+        return `${createHash('sha256').update(suffix).digest('hex')}  ${name}`
+      })
+      writeFileSync(join(folder, `SHA256SUMS-${target}.txt`), lines.join('\r\n') + '\r\n')
+    }
+    expect(await checkReleaseArtifacts(dir, '1.2.3')).toEqual([])
+    writeFileSync(join(dir, 'win7-x64', 'Teahouse-1.2.3-win-x64-setup.exe'), 'changed')
+    rmSync(join(dir, 'mac-arm64', 'Teahouse-1.2.3-mac-arm64.dmg'))
+    writeFileSync(join(dir, 'unexpected.txt'), 'other')
+    expect(await checkReleaseArtifacts(dir, '1.2.3')).toEqual(expect.arrayContaining([
+      'SHA-256 清单与安装包不符：SHA256SUMS-win7-x64.txt',
+      '缺少安装包：Teahouse-1.2.3-mac-arm64.dmg',
+      '未列入发布的文件：unexpected.txt'
+    ]))
+  })
+
   it('package、lock、tag 与产物版本一致时通过', () => {
     const root = fixture()
     const artifacts = join(root, 'artifacts', 'linux')

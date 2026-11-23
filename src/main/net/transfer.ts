@@ -610,7 +610,8 @@ export function pullTransfer(opts: PullOptions): Promise<void> {
       const partPath = `${finalPath}.part`
       let offset = 0
       try {
-        offset = Math.min(statSync(partPath).size, plan.size)
+        const partialSize = statSync(partPath).size
+        if (partialSize <= plan.size) offset = partialSize
       } catch {
         offset = 0
       }

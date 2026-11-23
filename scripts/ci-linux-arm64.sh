@@ -34,19 +34,14 @@ else
 fi
 USE_SYSTEM_FPM=true USE_HARD_LINKS=false npx --no-install electron-builder --linux deb:arm64 AppImage:arm64 --publish never
 
-native=$(find release -path '*/resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node' -print | sort | head -1)
-if [ -z "$native" ]; then
-  find release -maxdepth 3 -type f | sort
-  echo "未找到 arm64 打包产物中的 better_sqlite3.node" >&2
-  exit 1
-fi
-node scripts/check-native-glibc.cjs "$native"
-
 deb=$(ls release/Teahouse-*-linux-arm64.deb)
-mkdir -p /tmp/deb-verify
-data=$(ar t "$deb" | grep '^data\.tar')
-ar p "$deb" "$data" > "/tmp/deb-verify/$data"
-listing=$(tar -tvf "/tmp/deb-verify/$data")
+verify=$(mktemp -d)
+trap 'rm -rf "$verify"' EXIT
+dpkg-deb -x "$deb" "$verify"
+installed="$verify/opt/Teahouse"
+node scripts/check-native-glibc.cjs "$installed/resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node" GLIBC_2.17
+PANTRY_USER_DATA="$verify/profile" PANTRY_SMOKE=1 xvfb-run -a "$installed/pantry" --no-sandbox
+listing=$(dpkg-deb -c "$deb")
 if grep -P '^h' <<< "$listing"; then
   echo "deb 内含硬链接条目，UOS 深度安装器会失败" >&2
   exit 1

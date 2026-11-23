@@ -92,6 +92,9 @@ describe('Linux 截图兼容辅助', () => {
     expect(notice.reason).toBe('screen-unavailable')
     expect(notice.message).toContain('Wayland')
     expect(notice.message).toContain('Ctrl+V')
+    const arm64 = captureFailureNotice('arm64-wayland', true)
+    expect(arm64.message).toContain('Ctrl+V')
+    expect(arm64.message).not.toContain('授权窗口')
 
     expect(captureFailureNotice('window-hide-failed', false).message).toContain(
       '未能完全隐藏'

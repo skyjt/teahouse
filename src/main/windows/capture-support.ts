@@ -87,6 +87,9 @@ export function captureFailureNotice(
   reason: CaptureFailureReason,
   wayland: boolean
 ): CaptureFailureNotice {
+  if (reason === 'arm64-wayland') {
+    return { reason, message: tr('此 ARM64 Wayland 环境请使用系统截图，再到聊天框按 Ctrl+V 发送。') }
+  }
   if (reason === 'window-hide-failed') {
     return {
       reason,

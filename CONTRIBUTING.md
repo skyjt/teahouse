@@ -33,7 +33,7 @@ npm run build        # 编译 main / preload / renderer
 npm test             # vitest：协议编解码 + 发现层回环集成 + 纯函数
 npm run test:db      # 数据库自测（在 Electron 内置 Node 真实 ABI 上执行）
 npm run typecheck    # node16 / chrome108 两套类型基线
-npm run smoke        # 构建 + 启动冒烟（1.5s 干净退出）
+npm run smoke        # 构建并验证主窗口、设置 IPC 和磁盘数据库
 npm run dist:win     # NSIS 安装包 + 便携版（x64；请在 Windows / Win7 VM 测试）
 npm run dist:linux   # deb + AppImage（x64；请在 Debian 10 环境测试）
 npm run dist:mac     # dmg + zip（当前 macOS 架构）
@@ -74,7 +74,7 @@ npm test          # 编解码 + 回环集成 + 纯函数
 npm run test:db   # 真实 ABI 上的迁移 / repo / FTS
 npm run typecheck # node16 / chrome108 两套类型基线
 npm run build     # 三端产物
-npm run smoke     # 构建 + 启动 1.5s 干净退出（退出码 0）
+npm run smoke     # 主窗口显示、界面挂载、设置 IPC 和磁盘数据库就绪后退出
 ```
 
 网络相关测试必须绑定 `127.0.0.1`，**绝不向真实局域网发包**。
@@ -99,7 +99,7 @@ pantry/
 
 ## 打包与发布
 
-- GitHub Actions `release.yml`：构建 Windows 7 x64、Debian 10 / UOS 20 x64 等产物并上传；推送 `main` 后，全部平台构建与产物版本校验通过时，按 `package.json` 版本创建带注释的 `v<version>` tag 并发布 Release；远端已有该 tag 则跳过发布。推送 `v*` tag 仍会创建或更新 Release，tag 必须与包版本一致；手动触发仅在 `v*` tag 上发布。发布任务串行执行，构建不受限制且不会被取消。
+- GitHub Actions `release.yml`：构建 Windows 7 x64、Debian 10 / UOS 20 x64 等产物并上传；推送 `main` 后，全部平台构建通过，并核对安装包数量、版本与 SHA-256 后，按 `package.json` 版本创建带注释的 `v<version>` tag 并发布 Release；远端已有该 tag 则跳过发布。推送 `v*` tag 仍会创建或更新 Release，tag 必须与包版本一致；手动触发仅在 `v*` tag 上发布。发布任务串行执行，构建不受限制且不会被取消。
 - 各平台产物仍需在对应真机 / VM 上冒烟验证（Win7 SP1 x64、Debian 10 / UOS 20）。
 
 ## 常见问题

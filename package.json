@@ -2,7 +2,7 @@
   "name": "pantry",
   "productName": "茶话间",
   "desktopName": "pantry.desktop",
-  "version": "0.64.4",
+  "version": "0.64.5",
   "description": "茶话间（Teahouse）—— 纯内网、基于 IP 的局域网即时通讯与文件传输工具",
   "license": "GPL-3.0-only",
   "private": true,
@@ -39,7 +39,7 @@
     "dist:win": "npm run build && cross-env NO_UPDATE_NOTIFIER=1 electron-builder --win --x64 --publish never",
     "dist:win:ia32": "npm run build && cross-env NO_UPDATE_NOTIFIER=1 electron-builder --win --ia32 --publish never",
     "dist:linux": "npm run build && cross-env NO_UPDATE_NOTIFIER=1 USE_HARD_LINKS=false electron-builder --linux deb:x64 AppImage:x64 --publish never",
-    "dist:linux:arm64": "npm run build && cross-env NO_UPDATE_NOTIFIER=1 USE_HARD_LINKS=false electron-builder --linux deb:arm64 AppImage:arm64 --publish never",
+    "dist:linux:arm64": "bash scripts/rebuild-linux-native.sh arm64 && npm run build && cross-env NO_UPDATE_NOTIFIER=1 USE_HARD_LINKS=false electron-builder --linux deb:arm64 AppImage:arm64 --publish never",
     "dist:mac": "npm run build && cross-env NO_UPDATE_NOTIFIER=1 electron-builder --mac --publish never"
   },
   "build": {

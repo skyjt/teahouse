@@ -29,7 +29,7 @@ describe('Issue #29 / #31 / #34 截图兼容接线', () => {
     expect(guard).toBeLessThan(hide)
     expect(guard).toBeLessThan(capture)
     expect(mainSource.slice(guard, capture)).toContain(
-      "reportCaptureFailure('screen-unavailable', wasVisible)"
+      "reportCaptureFailure('arm64-wayland', wasVisible)"
     )
   })
 

@@ -1518,6 +1518,28 @@ describe('GroupsService 重新邀请补齐累计快照', () => {
     expect(updates).toBe(1)
   })
 
+  it.each(['owner', 'admin'])('错过重邀时向原%s确认转发快照，确认后恢复发言', actorId => {
+    const { owner, member, groupId } = fixture()
+    owner.svc.updateGroup(groupId, { kind: 'remove', memberIds: ['member'] })
+    deliver(owner, member)
+    const actor = actorId === 'owner' ? owner : client('admin')
+    actor.repo.save(owner.repo.get(groupId)!)
+    actor.svc.updateGroup(groupId, { kind: 'rename', name: '重邀前改名' })
+    actor.svc.updateGroup(groupId, { kind: 'invite', memberIds: ['member'] })
+    const latest = actor.repo.get(groupId)!
+    actor.messenger.sent.length = 0
+    member.messenger.sent.length = 0
+    const relay = makeEnvelope<GroupPayload>(MSG_TYPES.group, 'other', { op: 'info', group: latest })
+    member.messenger.emit('incoming', relay)
+    member.messenger.emit('incoming', relay)
+    expect(member.svc.get(groupId)?.amMember).toBe(false)
+    expect(member.messenger.sent).toMatchObject([{ peerId: actorId, env: { payload: { op: 'need', groupId } } }])
+    deliver(member, actor, actorId)
+    deliver(actor, member)
+    expect(member.repo.get(groupId)).toEqual(latest)
+    expect(member.svc.sendText(groupId, '恢复发言')).not.toBeNull()
+  })
+
   it('版本差不足、改管理身份/角色、移除成员、越权作者及第三方转发均不落库', () => {
     const { owner, member, groupId } = fixture('test-password')
     owner.svc.updateGroup(groupId, { kind: 'remove', memberIds: ['member'] })
