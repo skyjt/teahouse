@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto'
-import { closeSync, constants, openSync, readSync, writeFileSync } from 'node:fs'
+import { closeSync, constants, mkdirSync, openSync, readSync, writeFileSync } from 'node:fs'
 import { lstat, mkdir, open, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { isIP } from 'node:net'
 import { join } from 'node:path'
@@ -13,7 +13,15 @@ const MAX_FILE = 1024 * 1024
 const MAX_QUEUE = 256 * 1024
 const LOG_NAME = /^\d{4}-\d{2}-\d{2}-[a-f0-9-]{36}\.jsonl$/
 const UUID = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i
+const STARTUP_STAGES = [
+  'electron-ready', 'profile', 'language', 'protocols', 'window-create', 'window-load', 'dom-ready',
+  'ready-to-show', 'ui-mounted', 'window-show', 'tray', 'shortcuts', 'network', 'screen-lock', 'auto-launch', 'update-source'
+] as const
+export type StartupStage = typeof STARTUP_STAGES[number]
+export type StartupCheckpoint = (stage: StartupStage, status: 'starting' | 'ready' | 'failed' | 'timeout',
+  attempt?: number, error?: unknown) => void
 const VALUES = new Set([
+  ...STARTUP_STAGES, 'timeout',
   'starting', 'ready', 'failed', 'unavailable', 'file', 'memory', 'udp', 'tcp',
   'in', 'out', 'offering', 'accepted', 'done', 'declined', 'canceled', 'expired',
   'pending', 'sent', 'delivered', 'queued', 'recalled', 'connect', 'connected',
@@ -31,7 +39,7 @@ const VALUES = new Set([
 const ERROR_NAMES = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError'])
 const ERROR_CODES = /^(?:E[A-Z0-9_]{1,35}|SQLITE_[A-Z_]{1,35}|ERR_[A-Z_]{1,40})$/
 
-export type DiagnosticEvent = 'app.start' | 'app.stop' | 'app.previous-exit' | 'app.exception' |
+export type DiagnosticEvent = 'app.startup' | 'app.start' | 'app.stop' | 'app.previous-exit' | 'app.exception' |
   'process.exit' | 'window.health' | 'renderer.error' | 'store.open' | 'network.listen' |
   'message.state' | 'transfer.state' | 'transfer.phase' | 'transfer.error' |
   'capture.state' | 'screen.state' | 'logs.dropped' | 'bundle.export'
@@ -84,14 +92,14 @@ function sanitizedLog(bytes: Buffer): Buffer {
     try {
       const record = JSON.parse(line) as Record<string, unknown>
       if (!/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(record.at)) || !UUID.test(String(record.runId)) ||
-        !/^(app\.(start|stop|previous-exit|exception)|process\.exit|window\.health|renderer\.error|store\.open|network\.listen|message\.state|transfer\.(state|phase|error)|capture\.state|screen\.state|logs\.dropped|bundle\.export)$/.test(String(record.event))) continue
+        !/^(app\.(start|startup|stop|previous-exit|exception)|process\.exit|window\.health|renderer\.error|store\.open|network\.listen|message\.state|transfer\.(state|phase|error)|capture\.state|screen\.state|logs\.dropped|bundle\.export)$/.test(String(record.event))) continue
       const safe: Record<string, unknown> = { at: record.at, runId: record.runId, event: record.event }
       for (const [key, value] of Object.entries(record)) {
         if (key === 'level' && ['info', 'warn', 'error'].includes(String(value))) safe[key] = value
         else if (['id', 'sessionId', 'transferId', 'msgId'].includes(key) && typeof value === 'string' && UUID.test(value)) safe[key] = value
         else if (['peerId', 'host', 'localAddress'].includes(key) && typeof value === 'string' && /^[a-f0-9]{16}$/.test(value)) safe[key] = value
         else if (['stage', 'status', 'direction', 'reason', 'role', 'mode', 'kind', 'process'].includes(key) && typeof value === 'string' && VALUES.has(value)) safe[key] = value
-        else if (['port', 'localPort', 'bytes', 'total', 'count', 'durationMs', 'fps', 'exitCode', 'windowId', 'line', 'column', 'repeated'].includes(key) && typeof value === 'number' && Number.isSafeInteger(value)) safe[key] = value
+        else if (['attempt', 'port', 'localPort', 'bytes', 'total', 'count', 'durationMs', 'fps', 'exitCode', 'windowId', 'line', 'column', 'repeated'].includes(key) && typeof value === 'number' && Number.isSafeInteger(value)) safe[key] = value
         else if (key === 'version' && typeof value === 'string' && /^\d{1,5}\.\d{1,5}\.\d{1,5}$/.test(value)) safe[key] = value
         else if (key === 'errorType' && typeof value === 'string' && ERROR_NAMES.has(value)) safe[key] = value
         else if (key === 'errorCode' && typeof value === 'string' && ERROR_CODES.test(value)) safe[key] = value
@@ -148,6 +156,7 @@ export class DiagnosticsService {
   private dropped = 0
   private timer: ReturnType<typeof setTimeout> | undefined
   private writing: Promise<void> | undefined
+  private startupFile = ''
   private file = ''
   private fileBytes = 0
   private closed = false
@@ -201,7 +210,7 @@ export class DiagnosticsService {
       else if (key === 'version' && typeof value === 'string' && /^\d{1,5}\.\d{1,5}\.\d{1,5}$/.test(value)) safe[key] = value
       else if (['peerId', 'host', 'localAddress'].includes(key) && typeof value === 'string') safe[key] = this.alias(value)
       else if (['stage', 'status', 'direction', 'reason', 'role', 'mode', 'kind', 'process'].includes(key) && typeof value === 'string') safe[key] = VALUES.has(value) ? value : 'unknown'
-      else if (['port', 'localPort', 'bytes', 'total', 'count', 'durationMs', 'fps', 'exitCode', 'windowId', 'line', 'column'].includes(key) && typeof value === 'number' && Number.isFinite(value)) safe[key] = Math.max(-2147483648, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(value)))
+      else if (['attempt', 'port', 'localPort', 'bytes', 'total', 'count', 'durationMs', 'fps', 'exitCode', 'windowId', 'line', 'column'].includes(key) && typeof value === 'number' && Number.isFinite(value)) safe[key] = Math.max(-2147483648, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(value)))
     }
     Object.assign(safe, diagnosticError(error))
     const key = JSON.stringify([event, safe])
@@ -223,14 +232,35 @@ export class DiagnosticsService {
     this.repeats.clear()
   }
 
+  readonly checkpoint: StartupCheckpoint = (stage, status, attempt, error) => {
+    this.record('app.startup', { stage, status, attempt }, error)
+  }
+
+  // A native startup call can block the event loop before the usual log batch is written.
+  private writeStartupLine(line: string): boolean {
+    try {
+      const file = this.startupFile || join(this.directory, `${new Date().toISOString().slice(0, 10)}-${this.runId}.jsonl`)
+      let flags = constants.O_WRONLY | constants.O_APPEND | (constants.O_NOFOLLOW || 0)
+      if (!this.startupFile) {
+        mkdirSync(this.directory, { recursive: true, mode: 0o700 })
+        flags |= constants.O_CREAT | constants.O_EXCL
+      }
+      const fd = openSync(file, flags, 0o600)
+      this.startupFile = file
+      try { writeFileSync(fd, line) } finally { closeSync(fd) }
+      return true
+    } catch { return false }
+  }
+
   private enqueue(event: DiagnosticEvent, fields: Record<string, unknown>): void {
     const level = fields.errorType || fields.reason === 'crashed' ? 'error' : fields.status === 'failed' || fields.status === 'abnormal' ? 'warn' : 'info'
     const line = JSON.stringify({ at: new Date().toISOString(), runId: this.runId, level, event, ...fields }) + '\n'
     const bytes = Buffer.byteLength(line)
     if (bytes > 2048 || this.queueBytes + bytes > MAX_QUEUE) { this.dropped++; return }
-    this.queue.push(line); this.queueBytes += bytes
     this.memory.push(line); this.memoryBytes += bytes
     while (this.memoryBytes > MAX_QUEUE) this.memoryBytes -= Buffer.byteLength(this.memory.shift()!)
+    if (event === 'app.startup' && this.writeStartupLine(line)) return
+    this.queue.push(line); this.queueBytes += bytes
     if (!this.timer) this.timer = setTimeout(() => { this.timer = undefined; void this.flush() }, 1000)
     this.timer.unref()
   }

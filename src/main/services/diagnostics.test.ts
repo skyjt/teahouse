@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from 'vitest'
 import { mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -124,4 +125,22 @@ it('日志目录不可写时仍导出内存线索，失败不覆盖原附件，�
   await closing
   expect(diagnosticError({ name: { toString: () => 'Error', secret: 'private' } })).toEqual({ errorType: 'Error' })
   expect(diagnosticError({ name: '用户名', message: '私密', code: 'token=private', stack: '私密' })).toEqual({ errorType: 'Error' })
+})
+
+it('启动阶段在首次异步初始化和批量刷盘前即可读取，并能随诊断包导出', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pantry-startup-'))
+  directories.push(dir)
+  const log = new DiagnosticsService(join(dir, 'logs'))
+  services.push(log)
+  log.checkpoint('electron-ready', 'starting')
+  log.checkpoint('window-load', 'timeout', 2)
+  const file = `${new Date().toISOString().slice(0, 10)}-${log.runId}.jsonl`
+  const lines = readFileSync(join(log.directory, file), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+  expect(lines.map(row => [row.event, row.stage, row.status, row.attempt])).toEqual([
+    ['app.startup', 'electron-ready', 'starting', undefined], ['app.startup', 'window-load', 'timeout', 2]
+  ])
+  const zip = join(dir, 'startup.zip')
+  await log.exportBundle(zip, {}, false, writeDiagnosticBundle)
+  const exported = readZip(zip).get(`logs/${file}`)!.toString().trim().split('\n').map(line => JSON.parse(line))
+  expect(exported).toEqual(lines)
 })

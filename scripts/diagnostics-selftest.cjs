@@ -15,7 +15,14 @@ if (!process.versions.electron) {
     for (const mode of ['first', 'restart']) {
       const result = spawnSync(require('electron'), [__filename, directory, mode], { cwd: repo, stdio: 'inherit', timeout: 60000,
         env: { ...process.env, ELECTRON_RUN_AS_NODE: '', ELECTRON_RENDERER_URL: '', PANTRY_PEERS: '' } })
-      assert.equal(result.status, 0, `Electron 诊断自测 ${mode} 失败：${result.error || result.signal || result.status}`)
+      assert.ifError(result.error)
+      if (mode === 'first') {
+        // Windows 通过 TerminateProcess 实现 SIGKILL，父进程可以收到退出码 1。
+        assert.ok(result.signal === 'SIGKILL' || (process.platform === 'win32' && result.status === 1),
+          `未按预期强制结束测试进程：${result.signal || result.status}`)
+      } else {
+        assert.equal(result.status, 0, `Electron 诊断自测重启失败：${result.signal || result.status}`)
+      }
     }
     assert.equal(fs.existsSync(path.join(directory, 'data/logs/running.json')), false, '正常退出清理标记')
   } finally { fs.rmSync(directory, { recursive: true, force: true }) }
@@ -87,11 +94,20 @@ async function run() {
   assert.equal(await invoke('window.pantry.copyDiagnosticEnvironment()'), true)
   assert.equal(copied.includes('私密用户名'), false)
   assert.equal(copied.includes(directory), false)
+  const diagnostics = JSON.parse(copied.slice(copied.indexOf('{'))).diagnostics
+  const previousRunFile = path.join(directory, 'tested-run-id')
   if (mode === 'restart') {
-    assert.equal(JSON.parse(copied.slice(copied.indexOf('{'))).diagnostics.previousExit, 'unclean')
+    assert.equal(diagnostics.previousExit, 'unclean')
     const result = await invoke('window.pantry.exportDiagnostics(false)')
     assert.equal(result.status, 'saved')
-    const text = [...fixture.readZip(choice).values()].map(b => b.toString()).join('\n')
+    const bundle = fixture.readZip(choice)
+    const previousRunId = fs.readFileSync(previousRunFile, 'utf8')
+    const startup = [...bundle].find(([name]) => name.startsWith('logs/') && name.endsWith(`-${previousRunId}.jsonl`))
+    assert.ok(startup, '强制结束后仍能导出上一轮启动日志')
+    const entries = startup[1].toString().trim().split('\n').map(line => JSON.parse(line))
+    assert.ok(entries.some(entry => entry.runId === previousRunId && entry.event === 'app.startup' &&
+      entry.stage === 'window-show' && entry.status === 'ready'), '上次启动的显示结果已落盘')
+    const text = [...bundle.values()].map(b => b.toString()).join('\n')
     assert.equal(text.includes('app.exception'), true, '上一轮异常线索可导出')
     finished = true
     app.quit()
@@ -148,5 +164,6 @@ async function run() {
   fs.writeFileSync(path.join(artifacts, 'runtime.json'), JSON.stringify({ electron: process.versions.electron, node: process.versions.node, exportMs, maxGapMs, ticks, entries: [...zip.keys()] }, null, 2))
   process.emit('uncaughtExceptionMonitor', new TypeError('secret-main-message'), 'uncaughtException')
   console.log(`诊断自测通过：Electron ${process.versions.electron}，后台导出 ${exportMs}ms，隐私/异常/取消/失败/明暗英文界面。`)
-  app.exit(0) // 模拟未正常关闭；父进程立即用同一隔离目录重启复核。
+  fs.writeFileSync(previousRunFile, diagnostics.runId)
+  process.kill(process.pid, 'SIGKILL') // 模拟用户从任务管理器结束进程，下一轮复核同一数据目录。
 }

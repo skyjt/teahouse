@@ -1,6 +1,6 @@
 import { RangeScanScheduler } from './services/range-scan'
 import { truncateUtf8 } from './util/utf8'
-import { DiagnosticsService, diagnosticEnvironment } from './services/diagnostics'
+import { DiagnosticsService, diagnosticEnvironment, type StartupStage } from './services/diagnostics'
 import { setupDiagnosticsUi } from './services/diagnostics-ui'
 import { isLanguage, setLanguage, tr } from '../i18n'
 import {
@@ -237,6 +237,7 @@ if (!gotLock) {
   app.quit()
 } else {
   const diagnostics = new DiagnosticsService(join(app.getPath('userData'), 'logs'))
+  diagnostics.checkpoint('electron-ready', 'starting')
   void diagnostics.ready.then(() => diagnostics.record('app.start', { version: app.getVersion() }))
   process.on('uncaughtExceptionMonitor', error => diagnostics.fatal(error))
   app.on('web-contents-created', (_event, contents) => {
@@ -326,6 +327,7 @@ if (!gotLock) {
   })
   let tray: Tray | null = null
   let isQuitting = false
+  let mainWindowReady = false
   let nudgeShakeOrigin: [number, number] | null = null
   let nudgeShakeTimers: Array<ReturnType<typeof setTimeout>> = []
   let rangeScanner: RangeScanScheduler | null = null
@@ -597,7 +599,7 @@ if (!gotLock) {
   }
 
   function showMainWindow(options: { forceForeground?: boolean } = {}): void {
-    if (!mainWindow) return
+    if (!mainWindow || !mainWindowReady) return
     showWindowForeground(mainWindow, options)
   }
 
@@ -682,7 +684,7 @@ if (!gotLock) {
   }
 
   function syncMainWindowZoom(): void {
-    applyWindowZoom(mainWindow?.webContents, settingsView().fontScale)
+    applyWindowZoom(mainWindow?.webContents, appState?.config.fontScale ?? 100)
   }
 
   /**
@@ -785,16 +787,16 @@ if (!gotLock) {
       : true
   }
 
-  function applyAutoLaunch(enabled: boolean): void {
-    if (process.env['PANTRY_SMOKE']) return
-    if (!app.isPackaged) return
+  function applyAutoLaunch(enabled: boolean): boolean {
+    if (process.env['PANTRY_SMOKE']) return true
+    if (!app.isPackaged) return true
     try {
       if (process.platform === 'linux') {
         const dir = join(app.getPath('home'), '.config', 'autostart')
         const file = join(dir, 'pantry.desktop')
         if (!enabled) {
           rmSync(file, { force: true })
-          return
+          return true
         }
         mkdirSync(dir, { recursive: true })
         const content = [
@@ -810,11 +812,13 @@ if (!gotLock) {
         // UOS/部分桌面会检测到写入并弹"茶话间 正在设置开机自启动"提示（决议 #79）
         const existing = existsSync(file) ? readFileSync(file, 'utf8') : ''
         if (existing !== content) writeFileSync(file, content)
-        return
+        return true
       }
       app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: true })
+      return true
     } catch (err) {
       console.warn('[system] 开机自启设置失败：', err)
+      return false
     }
   }
 
@@ -1589,7 +1593,7 @@ if (!gotLock) {
     if (process.platform === 'win32') mainWindow?.flashFrame(true) // 任务栏闪烁提醒
   }
 
-  function createMainWindow(): void {
+  function createMainWindow(): BrowserWindow {
     // dev 模式 mac Dock 显示茶杯图标（决议 #72）：打包版靠 .app 内嵌 icns，而 `npm run dev`
     // 跑未打包 Electron、Dock 是其默认图标；运行时 setIcon 仅补 dev，打包版不覆盖（icns 更精细）。
     if (process.platform === 'darwin' && !app.isPackaged) {
@@ -1600,7 +1604,7 @@ if (!gotLock) {
       }
     }
 
-    mainWindow = new BrowserWindow({
+    const win = new BrowserWindow({
       width: 960,
       height: 640,
       minWidth: 960,
@@ -1621,58 +1625,47 @@ if (!gotLock) {
         nodeIntegration: false
       }
     })
+    mainWindow = win
     syncMainWindowZoom()
-    mainWindow.webContents.on('did-finish-load', syncMainWindowZoom)
+    win.webContents.on('did-finish-load', syncMainWindowZoom)
 
     // 最大化状态推送：渲染层自绘「最大化/还原」按钮据此切图标
-    mainWindow.on('maximize', () =>
-      mainWindow?.webContents.send(IpcEvents.winMaximizeChanged, true)
+    win.on('maximize', () =>
+      win.webContents.send(IpcEvents.winMaximizeChanged, true)
     )
-    mainWindow.on('unmaximize', () =>
-      mainWindow?.webContents.send(IpcEvents.winMaximizeChanged, false)
+    win.on('unmaximize', () =>
+      win.webContents.send(IpcEvents.winMaximizeChanged, false)
     )
 
     // 安全红线（README）：不放行任何窗口内导航与新窗口
-    mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-    mainWindow.webContents.on('will-navigate', (event) => event.preventDefault())
-    mainWindow.webContents.on('before-input-event', (_event, input) => {
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    win.webContents.on('will-navigate', (event) => event.preventDefault())
+    win.webContents.on('before-input-event', (_event, input) => {
       if (
         input.type === 'keyDown' &&
         (input.meta || input.control) &&
         !input.alt &&
         input.key.toLowerCase() === 'v'
       ) {
-        mainWindow?.webContents.send(IpcEvents.clipboardPasteImage)
+        win.webContents.send(IpcEvents.clipboardPasteImage)
       }
     })
 
     // 关窗 = 进托盘常驻（F-SYS-1）；托盘不可用的桌面环境降级为直接退出
-    mainWindow.on('close', (event) => {
+    win.on('close', (event) => {
       if (isQuitting || !tray || appState?.config.closeToTray === false) return
       event.preventDefault()
-      mainWindow?.hide()
+      win.hide()
     })
-    mainWindow.on('focus', () => mainWindow?.flashFrame(false))
-    mainWindow.on('closed', () => {
+    win.on('focus', () => win.flashFrame(false))
+    win.on('closed', () => {
+      if (mainWindow !== win) return
+      mainWindowReady = false
       clearNudgeShake(false)
       mainWindow = null
     })
 
-    const rendererUrl = resolveDevRendererUrl(
-      process.env['ELECTRON_RENDERER_URL'],
-      '',
-      app.isPackaged
-    )
-    const win = mainWindow
-    showMainWindowOnLoad(win,
-      () => rendererUrl ? win.loadURL(rendererUrl) : win.loadFile(join(__dirname, '../renderer/index.html')),
-      () => isQuitting,
-      () => {
-        if (process.env['PANTRY_SMOKE']) return app.exit(1)
-        dialog.showErrorBox(tr('茶话间启动失败'),
-          tr('主窗口未能加载。诊断日志位于 {0}', { 0: join(app.getPath('userData'), 'logs') }))
-        app.quit()
-      })
+    return win
   }
 
   // ---- IPC（只做参数校验与转发，业务禁入此层 —— tech-design §3） ----
@@ -3093,17 +3086,66 @@ if (!gotLock) {
     }
   })
 
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
-  })
+  app.on('second-instance', () => showMainWindow({ forceForeground: true }))
 
-  app.whenReady().then(async () => {
-    remoteView.start()
+  let startupFailed = false
+  let earlyStage: StartupStage = 'electron-ready'
+  const earlyTimeout = setTimeout(() => {
+    if (isQuitting || startupFailed) return
+    diagnostics.checkpoint(earlyStage, 'timeout')
+    reportStartupFailure()
+  }, 30_000)
+
+  function reportStartupFailure(): void {
+    if (isQuitting || startupFailed) return
+    startupFailed = true
+    clearTimeout(earlyTimeout)
+    if (process.env['PANTRY_SMOKE']) return app.exit(1)
+    try {
+      dialog.showErrorBox(tr('茶话间启动失败'),
+        tr('主窗口未能加载。诊断日志位于 {0}', { 0: diagnostics.directory }))
+    } finally { app.quit() }
+  }
+
+  function beginStage(stage: StartupStage): void {
+    earlyStage = stage
+    diagnostics.checkpoint(stage, 'starting')
+  }
+
+  function desktopStep(stage: StartupStage, run: () => boolean | void): void {
+    diagnostics.checkpoint(stage, 'starting')
+    try {
+      diagnostics.checkpoint(stage, run() === false ? 'failed' : 'ready')
+    } catch (error) {
+      diagnostics.checkpoint(stage, 'failed', undefined, error)
+    }
+  }
+
+  function startDesktopServices(): void {
+    const state = appState
+    if (isQuitting || !state) return
+    desktopStep('tray', () => {
+      tray = setupTray({ showWindow: showMainWindow, quit: () => app.quit() })
+      return tray !== null
+    })
+    desktopStep('shortcuts', () => {
+      registerGlobalShortcuts()
+      return shortcutStatus.capture && shortcutStatus.showHide
+    })
+    desktopStep('screen-lock', () => remoteView.start())
+    desktopStep('auto-launch', () => applyAutoLaunch(state.config.autoLaunch))
+    desktopStep('update-source', () => {
+      if (canAdvertiseUpdateSource() && saveProfileCaps(state, [...state.profile.caps, CAPS.updateSource])) {
+        discovery?.announceProfile()
+      }
+    })
     void imagePreview.prune()
-    const updateCaps = canAdvertiseUpdateSource() ? [CAPS.updateSource] : []
+  }
+
+  void app.whenReady().then(async () => {
+    if (isQuitting || startupFailed) return
+    diagnostics.checkpoint('electron-ready', 'ready')
+    beginStage('profile')
     appState = loadAppState(app.getPath('userData'), app.getVersion(), tcpPort, udpPort, [
       DISCOVERY_PROBE_CAP,
       CAPS.mediaRecall,
@@ -3113,15 +3155,17 @@ if (!gotLock) {
       CAPS.transferAck,
       CAPS.groupRoles,
       CAPS.avatarImages,
-      CAPS.fileCabinet,
-      ...updateCaps
+      CAPS.fileCabinet
     ], app.getPreferredSystemLanguages()[0] || app.getLocale())
+    diagnostics.checkpoint('profile', 'ready')
+    beginStage('language')
     await setLanguage(appState.config.language)
+    if (isQuitting || startupFailed) return
+    diagnostics.checkpoint('language', 'ready')
     udpPort = envUdpPort ?? appState.config.udpPort
     tcpPort = envTcpPort ?? appState.config.tcpPort
     netState.udpPort = udpPort
     appState.profile.tcpPort = tcpPort
-    applyAutoLaunch(appState.config.autoLaunch)
     // 文件柜权限判定只依赖本机配置，库不可用时例外退化为内存态（决议 #271/#277）
     share = new ShareService({
       getRoot: () => appState?.config.fileCabinet.root ?? '',
@@ -3129,6 +3173,7 @@ if (!gotLock) {
       getGrants: () => shareGrantsRepo
     })
 
+    beginStage('protocols')
     // pantry-img://<transferId> —— 渲染层取图的唯一通道（绕开 file:// 的 CSP/安全限制，
     // 且只放行 transfers 表里登记过的路径，不开任意文件读取口子）
     protocol.registerFileProtocol('pantry-img', (request, callback) => {
@@ -3201,16 +3246,24 @@ if (!gotLock) {
       callback({ error: -6 })
     })
 
-    createMainWindow()
-    tray = setupTray({
-      showWindow: showMainWindow,
-      quit: () => {
-        isQuitting = true
-        app.quit()
+    diagnostics.checkpoint('protocols', 'ready')
+    const rendererUrl = resolveDevRendererUrl(process.env['ELECTRON_RENDERER_URL'], '', app.isPackaged)
+    clearTimeout(earlyTimeout)
+    showMainWindowOnLoad({
+      create: createMainWindow,
+      load: win => rendererUrl ? win.loadURL(rendererUrl) : win.loadFile(join(__dirname, '../renderer/index.html')),
+      isQuitting: () => isQuitting || startupFailed,
+      checkpoint: diagnostics.checkpoint,
+      onFailure: reportStartupFailure,
+      onShown: () => {
+        mainWindowReady = true
+        setImmediate(startDesktopServices)
       }
     })
-    void startNet()
-    registerGlobalShortcuts()
+    if (startupFailed) return
+    diagnostics.checkpoint('network', 'starting')
+    void startNet().then(() => diagnostics.checkpoint('network', netState.ok ? 'ready' : 'failed'),
+      error => diagnostics.checkpoint('network', 'failed', undefined, error))
 
     // 成品与开发环境走同一启动检查。窗口只创建但未挂载、SQLite 加载失败都应使 CI 失败。
     if (process.env['PANTRY_SMOKE']) {
@@ -3231,12 +3284,16 @@ if (!gotLock) {
       }
       void check()
     }
+  }).catch(error => {
+    if (isQuitting || startupFailed) return
+    diagnostics.checkpoint(earlyStage, 'failed', undefined, error)
+    reportStartupFailure()
   })
 
   app.on('activate', () => showMainWindow()) // macOS 点 Dock 唤起
 
   app.on('will-quit', () => {
-    globalShortcut.unregisterAll()
+    if (app.isReady()) globalShortcut.unregisterAll()
     // 窗口销毁后再关闭数据库；诊断日志刷盘期间仍可能收到渲染进程的 IPC。
     try { db?.close() }
     catch (err) { console.error('[store] 关闭数据库失败：', err) }
@@ -3250,6 +3307,7 @@ if (!gotLock) {
     event.preventDefault()
     if (diagnosticClosing) return
     diagnosticClosing = true
+    clearTimeout(earlyTimeout)
     remoteView.close()
     isQuitting = true
     stopTrayUnreadFlash(tray)

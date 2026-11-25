@@ -18,6 +18,7 @@ async function bootstrap(): Promise<void> {
     console.error(error)
   }
   app.mount('#app')
+  if (entry === 'main') window.pantry.mainReady()
 }
 
 void bootstrap().catch(error => {

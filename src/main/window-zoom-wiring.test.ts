@@ -20,9 +20,9 @@ const ipcSource = readFileSync(new URL('../shared/ipc.ts', import.meta.url), 'ut
 describe('页面缩放主进程接线', () => {
   it('主窗口创建和设置更新均同步 WebContents 倍率', () => {
     expect(mainSource).toContain(
-      'applyWindowZoom(mainWindow?.webContents, settingsView().fontScale)'
+      'applyWindowZoom(mainWindow?.webContents, appState?.config.fontScale ?? 100)'
     )
-    expect(mainSource).toContain("mainWindow.webContents.on('did-finish-load', syncMainWindowZoom)")
+    expect(mainSource).toContain("win.webContents.on('did-finish-load', syncMainWindowZoom)")
     expect(mainSource).toContain('syncMainWindowZoom()')
     expect(mainSource).toContain('syncSettingsWindowZoom(view.fontScale)')
     expect(mainSource).toContain('const { fontScale, theme } = settingsView()')
