@@ -9,6 +9,7 @@ import {
   type ConversationSearchOptions,
   type ConversationView,
   type CaptureFailureNotice,
+  type CaptureInit,
   type DataExportOptions,
   type DataImportResult,
   type ExportFormat,
@@ -26,6 +27,7 @@ import {
   type NudgeEvent,
   type NudgeResult,
   type PantryApi,
+  type OwnShareListing,
   type PeerView,
   type ProfileSubmit,
   type ProfileAvatarChoice,
@@ -55,8 +57,8 @@ function subscribe<T>(channel: string, listener: (data: T) => void): () => void 
 
 // preload 早于 renderer 动态入口执行，先缓存截图初始化，避免 CaptureApp 晚订阅丢事件（决议 #218）。
 const captureInitReplay = createCaptureInitReplay()
-ipcRenderer.on(IpcEvents.captureInit, (_event, pngBytes: ArrayBuffer) => {
-  captureInitReplay.publish(pngBytes)
+ipcRenderer.on(IpcEvents.captureInit, (_event, init: CaptureInit) => {
+  captureInitReplay.publish(init)
 })
 
 // 渲染进程一切能力的唯一入口（tech-design §2 安全基线：sandbox + contextBridge）
@@ -89,8 +91,8 @@ const api: PantryApi = {
   probePeer: (nodeId: string): Promise<boolean> =>
     ipcRenderer.invoke(IpcChannels.peersProbe, nodeId),
   listConversations: (): Promise<ConversationView[]> => ipcRenderer.invoke(IpcChannels.convList),
-  openConversation: (peerNodeId: string): Promise<ConversationView | null> =>
-    ipcRenderer.invoke(IpcChannels.convOpen, peerNodeId),
+  openConversation: (targetId: string, type?: ConversationView['type']): Promise<ConversationView | null> =>
+    ipcRenderer.invoke(IpcChannels.convOpen, targetId, type),
   markRead: (convId: string): Promise<void> => ipcRenderer.invoke(IpcChannels.convMarkRead, convId),
   pinConversation: (convId: string, pinned: boolean): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.convPin, convId, pinned),
@@ -119,9 +121,9 @@ const api: PantryApi = {
   setProfileAvatar: (choice: ProfileAvatarChoice): Promise<SettingsView> =>
     ipcRenderer.invoke(IpcChannels.profileSetAvatar, choice),
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.settingsPickDir),
-  pickFiles: (directory: boolean): Promise<string[] | null> =>
-    ipcRenderer.invoke(IpcChannels.filePick, directory),
-  pickImages: (): Promise<string[] | null> => ipcRenderer.invoke(IpcChannels.imgPick),
+  pickFiles: (directory: boolean, recipient: string): Promise<string[] | null> =>
+    ipcRenderer.invoke(IpcChannels.filePick, directory, recipient),
+  pickImages: (recipient: string): Promise<string[] | null> => ipcRenderer.invoke(IpcChannels.imgPick, undefined, recipient),
   pickStickerImages: (): Promise<string[] | null> =>
     ipcRenderer.invoke(IpcChannels.imgPick, 'sticker'),
   grantFilePaths: (paths: string[]): Promise<string[]> =>
@@ -189,6 +191,8 @@ const api: PantryApi = {
     ipcRenderer.invoke(IpcChannels.imgThumbnailCache, transferId, bytes),
   search: (query: string): Promise<SearchResult> =>
     ipcRenderer.invoke(IpcChannels.searchQuery, query),
+  searchSenders: (convId: string | null): Promise<string[]> =>
+    ipcRenderer.invoke(IpcChannels.msgSearchSenders, convId),
   searchMessages: (options: ConversationSearchOptions): Promise<ConversationMessageHit[]> =>
     ipcRenderer.invoke(IpcChannels.msgSearch, options),
   getMessageContext: (convId: string, seq: number): Promise<MessageView[]> =>
@@ -201,7 +205,9 @@ const api: PantryApi = {
     ipcRenderer.invoke(IpcChannels.shareMySetRoot, clear === true),
   setShareMode: (mode: ShareMode): Promise<SettingsView> =>
     ipcRenderer.invoke(IpcChannels.shareMySetMode, mode),
-  revealShareRoot: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.shareMyReveal),
+  listOwnShareFolder: (path: string): Promise<OwnShareListing | null> =>
+    ipcRenderer.invoke(IpcChannels.shareMyList, path),
+  revealShareRoot: (path = ''): Promise<boolean> => ipcRenderer.invoke(IpcChannels.shareMyReveal, path),
   listShareGrants: (): Promise<ShareGrantView[]> =>
     ipcRenderer.invoke(IpcChannels.shareGrantList),
   setShareGrant: (nodeId: string, mode: ShareMode | null): Promise<ShareGrantView[]> =>
@@ -269,10 +275,10 @@ const api: PantryApi = {
       mentions ? JSON.parse(JSON.stringify(mentions)) : mentions,
       replyTo
     ),
-  startCapture: (): Promise<void> => ipcRenderer.invoke(IpcChannels.captureStart),
+  startCapture: (convId?: string): Promise<void> => ipcRenderer.invoke(IpcChannels.captureStart, convId),
   captureReady: (): Promise<void> => ipcRenderer.invoke(IpcChannels.captureReady),
-  captureDone: (bytes: ArrayBuffer, send: boolean): Promise<void> =>
-    ipcRenderer.invoke(IpcChannels.captureDone, bytes, send),
+  captureDone: (bytes: ArrayBuffer, convId?: string): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.captureDone, bytes, convId),
   writeImageToClipboard: (bytes: ArrayBuffer): Promise<boolean> =>
     ipcRenderer.invoke(IpcChannels.clipboardWriteImage, bytes),
   readImageFromClipboard: (): Promise<ArrayBuffer | null> =>
@@ -302,7 +308,7 @@ const api: PantryApi = {
   onNetState: (listener) => subscribe<NetState>(IpcEvents.netState, listener),
   onGroupUpdated: (listener) => subscribe<GroupView>(IpcEvents.groupUpdated, listener),
   onCaptureInit: (listener) => captureInitReplay.subscribe(listener),
-  onCaptured: (listener) => subscribe<ArrayBuffer>(IpcEvents.captured, listener),
+  onCaptured: (listener) => subscribe<MessageView>(IpcEvents.captured, listener),
   onCaptureFailed: (listener) =>
     subscribe<CaptureFailureNotice>(IpcEvents.captureFailed, listener),
   onOpenConv: (listener) => subscribe<string>(IpcEvents.openConv, listener),

@@ -130,23 +130,24 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   padding: 24px;
-  background: rgba(22, 34, 52, 0.32);
+  background: var(--scrim);
   display: grid;
   place-items: center;
   z-index: 1200;
-  animation: group-invite-mask-in 140ms ease-out;
+  animation: group-invite-mask-in var(--motion-feedback) ease-out;
 }
 .dialog {
   width: min(460px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
   background: var(--material-strong);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   padding: 18px 20px;
   box-shadow: var(--highlight-edge), var(--shadow-float);
-  animation: group-invite-dialog-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: group-invite-dialog-in var(--motion-enter) var(--ease-out);
 }
 .dialog:focus {
   outline: none;
@@ -187,7 +188,7 @@ onBeforeUnmount(() => {
 @keyframes group-invite-dialog-in {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.985);
+    transform: translateY(4px);
   }
 }
 @media (prefers-reduced-motion: reduce) {

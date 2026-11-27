@@ -125,7 +125,13 @@ export class MsgRepo {
       ORDER BY seq ASC LIMIT ?
     `)
     this.aroundStmt = db.prepare(
-      'SELECT * FROM messages WHERE conv_id = ? AND seq BETWEEN ? AND ? ORDER BY seq ASC'
+      `WITH earlier AS (
+         SELECT * FROM messages WHERE conv_id = @convId AND seq < @seq ORDER BY seq DESC, id DESC LIMIT @radius
+       ), later AS (
+         SELECT * FROM messages WHERE conv_id = @convId AND seq > @seq ORDER BY seq, id LIMIT @radius
+       )
+       SELECT * FROM earlier UNION ALL SELECT * FROM messages WHERE conv_id = @convId AND seq = @seq
+       UNION ALL SELECT * FROM later ORDER BY seq, id`
     )
     this.statusStmt = db.prepare('UPDATE messages SET status = ? WHERE id = ?')
     this.recallStmt = db.prepare(
@@ -170,8 +176,7 @@ export class MsgRepo {
 
   /** 搜索跳转用：取目标 seq 前后各 radius 条（含自身），按 seq 升序 */
   around(convId: string, seq: number, radius: number): MsgRow[] {
-    const rows = this.aroundStmt.all(convId, seq - radius, seq + radius) as MsgRow[]
-    return rows
+    return this.aroundStmt.all({ convId, seq, radius }) as MsgRow[]
   }
 
   /** 倒序游标分页：beforeSeq 为 null 取最新一页；返回按 seq 升序（直接渲染） */

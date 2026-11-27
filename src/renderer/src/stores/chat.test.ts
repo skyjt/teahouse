@@ -129,6 +129,7 @@ describe('闲置会话缓存边界', () => {
     expect(window.pantry.pageMessages).toHaveBeenLastCalledWith('group:0', null, 50)
     expect(store.messages['group:0']).toHaveLength(50)
     expect(store.openScrollMode).toBe('latest')
+    store.convs = [conv('group:1')]
     await store.jumpToMessage('group:1', 500, 'target')
     expect(store.getCachedMessage('group:1', 'target')?.seq).toBe(500)
     expect(store.highlightId).toBe('target')
@@ -242,7 +243,7 @@ describe('chat store 自己发送后的滚动意图', () => {
     await store.openConv('group:team')
 
     expect(pageMessages).toHaveBeenCalledWith('group:team', null, 50)
-    expect(markRead).toHaveBeenCalledWith('group:team')
+    expect(markRead).not.toHaveBeenCalled()
     expect(store.messages['group:team']).toEqual(latest)
     expect(store.openScrollMode).toBe('latest')
     expect(store.openScrollRun).toBe(1)
@@ -293,6 +294,18 @@ describe('chat store 自己发送后的滚动意图', () => {
       'latest-single:node-b'
     ])
     expect(store.messages['single:node-a']).toBeUndefined()
+  })
+
+  it('命中已撤回或已清理时保留正在阅读的聊天', async () => {
+    const gone = { ...msg('gone', 'group:b'), status: 'recalled' as const }
+    vi.stubGlobal('window', { pantry: { getMessageContext: vi.fn().mockResolvedValue([gone]) } })
+    const store = useChatStore()
+    store.activeConvId = 'group:a'
+    for (const id of ['gone', 'deleted']) {
+      expect(await store.jumpToMessage('group:b', 3, id)).toBe(false)
+      expect(store.activeConvId).toBe('group:a')
+      expect(store.highlightId).toBeNull()
+    }
   })
 
   it('迟到的历史搜索上下文不得改写新会话的高亮与滚动意图', async () => {
@@ -445,7 +458,8 @@ describe('未读置读需窗口可见且聚焦（决议 #220）', () => {
     await store.init()
     store.activeConvId = 'single:node-bob'
 
-    msgNewHandler?.(msg('in-1'))
+    store.visibleConvId = store.activeConvId
+    msgNewHandler?.({ ...msg('in-1'), isMine: false })
 
     expect(markRead).toHaveBeenCalledWith('single:node-bob')
   })
@@ -481,13 +495,42 @@ describe('未读置读需窗口可见且聚焦（决议 #220）', () => {
     expect(open).toHaveBeenCalledWith('single:node-bob', { scroll: 'latest' })
   })
 
+  it('截图发出后只更新目标会话，保留用户后来打开的聊天', async () => {
+    stubEnv({ visibilityState: 'visible', focused: true })
+    const store = useChatStore()
+    await store.init()
+    store.activeConvId = 'group:other'
+    store.setConversationMessages('group:other', [])
+    store.setConversationMessages('single:node-bob', [])
+    const screenshot = { ...msg('capture-1'), status: 'sent' as const }
+    vi.mocked(window.pantry.onCaptured).mock.calls[0][0](screenshot)
+    expect(store.messages['single:node-bob']).toEqual([screenshot])
+    expect(store.activeConvId).toBe('group:other')
+    expect(store.activeMessages).toEqual([])
+  })
+
+  it('浏览文件柜时消息到达和窗口聚焦都保留未读，返回消息面板才置读', async () => {
+    const { markRead } = stubEnv({ visibilityState: 'visible', focused: true })
+    const store = useChatStore()
+    await store.init()
+    store.activeConvId = 'single:node-bob'
+    store.convs = [{ ...conv(), unread: 1 }]
+    msgNewHandler?.({ ...msg('unseen'), isMine: false })
+    focusHandler?.()
+    expect(markRead).not.toHaveBeenCalled()
+    store.visibleConvId = store.activeConvId
+    store.readVisibleConversation()
+    expect(markRead).toHaveBeenCalledWith(store.activeConvId)
+  })
+
   it('窗口最小化 / 隐藏到托盘时，当前会话新消息保留未读', async () => {
     const { markRead } = stubEnv({ visibilityState: 'hidden', focused: false })
     const store = useChatStore()
     await store.init()
     store.activeConvId = 'single:node-bob'
 
-    msgNewHandler?.(msg('in-2'))
+    store.visibleConvId = store.activeConvId
+    msgNewHandler?.({ ...msg('in-2'), isMine: false })
 
     expect(markRead).not.toHaveBeenCalled()
   })
@@ -512,17 +555,19 @@ describe('未读置读需窗口可见且聚焦（决议 #220）', () => {
     await store.init()
     store.activeConvId = 'single:node-bob'
 
-    msgNewHandler?.(msg('in-3'))
+    store.visibleConvId = store.activeConvId
+    msgNewHandler?.({ ...msg('in-3'), isMine: false })
 
     expect(markRead).not.toHaveBeenCalled()
   })
 
   it('重新聚焦窗口时补置读当前会话攒下的未读', async () => {
-    const { markRead } = stubEnv({ visibilityState: 'visible', focused: false })
+    const { markRead } = stubEnv({ visibilityState: 'visible', focused: true })
     const store = useChatStore()
     await store.init()
     store.activeConvId = 'single:node-bob'
     store.convs = [{ ...conv('single:node-bob'), unread: 2 }]
+    store.visibleConvId = store.activeConvId
 
     focusHandler?.()
 

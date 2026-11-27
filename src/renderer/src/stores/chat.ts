@@ -1,4 +1,3 @@
-import { tr } from '../utils/i18n'
 import { defineStore } from 'pinia'
 import { shallowReactive } from 'vue'
 import type {
@@ -85,6 +84,7 @@ export const useChatStore = defineStore('chat', {
   state: () => ({
     convs: [] as ConversationView[],
     activeConvId: null as string | null,
+    visibleConvId: null as string | null,
     /** 主动收起后保持空白，远端抖一抖不能代替用户重新打开。 */
     hiddenConvId: null as string | null,
     /** 仅驻留当前进程；收起/切换不丢草稿，不写入磁盘。 */
@@ -127,7 +127,7 @@ export const useChatStore = defineStore('chat', {
     }
   },
   actions: {
-    async init(): Promise<void> {
+    async init(showChat?: () => void): Promise<void> {
       if (this.initialized) return
       this.initialized = true
       this.convs = await window.pantry.listConversations()
@@ -152,7 +152,7 @@ export const useChatStore = defineStore('chat', {
         if (this.messages[msg.convId]) this.appendConversationMessage(msg.convId, msg)
         // 只有窗口可见且聚焦才把当前会话新消息即时置读；最小化 / 托盘 / 失焦时
         // 保留未读，托盘闪烁与角标才能被感知（决议 #220）
-        if (msg.convId === this.activeConvId && isWindowAttended()) {
+        if (!msg.isMine && msg.convId === this.visibleConvId && isWindowAttended()) {
           void window.pantry.markRead(msg.convId)
         }
       })
@@ -162,12 +162,7 @@ export const useChatStore = defineStore('chat', {
         if (target) Object.assign(target, msg)
       })
       // 回到窗口时补置读当前会话攒下的未读，托盘闪烁与角标同步停止（决议 #220）
-      window.addEventListener('focus', () => {
-        const convId = this.activeConvId
-        if (convId && this.convs.some((c) => c.id === convId && c.unread > 0)) {
-          void window.pantry.markRead(convId)
-        }
-      })
+      window.addEventListener('focus', () => this.readVisibleConversation())
       window.pantry.onMsgStatus((event) => {
         this.updateConversationMessageStatus(event.convId, event.id, event.status)
       })
@@ -187,13 +182,18 @@ export const useChatStore = defineStore('chat', {
       })
       // 点系统通知/托盘 → 直达对应会话（F-SYS-2），单聊群聊通用
       window.pantry.onOpenConv((convId) => {
-        void this.openConv(convId, { scroll: 'latest' })
+        void this.openConv(convId, { scroll: 'latest' }).then(() => {
+          if (this.activeConvId === convId) showChat?.()
+        })
       })
-      // 截图选择"发送"：发到当前会话（无可发送会话则只留在剪贴板）
-      window.pantry.onCaptured((bytes) => {
-        const conv = this.activeConv
-        if (conv) void this.sendImageBytes(tr('截图.png'), bytes)
-      })
+      window.pantry.onCaptured((message) => this.pushOwn(message))
+    },
+
+    readVisibleConversation(): void {
+      const id = this.visibleConvId
+      if (id && this.convs.some((c) => c.id === id && c.unread > 0) && isWindowAttended()) {
+        void window.pantry.markRead(id)
+      }
     },
 
     /** 仅会话列表具有再次点击收起语义；通知、搜索等入口始终打开。 */
@@ -254,36 +254,34 @@ export const useChatStore = defineStore('chat', {
         if (run !== navigationRun) return
         this.setConversationMessages(convId, messages)
       }
-      await window.pantry.markRead(convId)
-      if (run !== navigationRun) return
       this.requestConversationScroll(scroll)
     },
 
     /** 搜索结果跳转：载入目标前后窗口并短暂高亮（ui-design §6） */
-    async jumpToMessage(convId: string, seq: number, msgId: string): Promise<void> {
+    async jumpToMessage(convId: string, seq: number, msgId: string): Promise<boolean> {
       const run = ++navigationRun
-      this.hiddenConvId = null
-      if (convId.startsWith('single:')) {
-        const conv = await window.pantry.openConversation(convId.slice(7))
-        if (!conv || run !== navigationRun) return
-      } else {
-        await window.pantry.markRead(convId)
-        if (run !== navigationRun) return
-      }
-      this.activeConvId = convId
       const ctx = await window.pantry.getMessageContext(convId, seq)
-      if (run !== navigationRun || this.activeConvId !== convId) return
+      if (run !== navigationRun || !ctx.some(m => m.id === msgId && m.status !== 'recalled')) return false
+      let conv = this.convs.find(c => c.id === convId)
+      const single = convId.startsWith('single:')
+      if (!conv || (single && this.activeConvId !== convId)) {
+        const restored = await window.pantry.openConversation(convId.slice(single ? 7 : 6), single ? 'single' : 'group')
+        if (!restored || run !== navigationRun) return false
+        this.upsertConversation(restored)
+        conv = restored
+      }
+      if (this.pendingRemoval?.convId === convId) this.undoRemoveConversation()
+      this.hiddenConvId = null
+      this.activeConvId = convId
       this.setConversationMessages(convId, ctx)
-      // 跳转窗口若已含会话最新消息（尾条 ts 触达 lastTs），则不算"看历史"，
-      // 避免点最新命中 / 关闭搜索后仍误显"回到最新"（决议 #74）
-      const conv = this.convs.find((c) => c.id === convId)
       const tail = ctx[ctx.length - 1]
-      this.viewingHistory = !(conv && tail && tail.ts >= conv.lastTs)
-      this.highlightId = msgId || null
+      this.viewingHistory = tail.ts < conv.lastTs
+      this.highlightId = msgId
       this.requestConversationScroll('target')
       setTimeout(() => {
         if (run === navigationRun && this.highlightId === msgId) this.highlightId = null
       }, 2600)
+      return true
     },
     async getMessageById(msgId: string): Promise<MessageView | null> {
       let request = messageRequests.get(msgId)
@@ -307,9 +305,6 @@ export const useChatStore = defineStore('chat', {
       if (info.convId.startsWith('single:')) {
         const conv = await window.pantry.openConversation(info.convId.slice(7))
         if (!conv || run !== navigationRun) return
-      } else {
-        await window.pantry.markRead(info.convId)
-        if (run !== navigationRun) return
       }
       this.activeConvId = info.convId
       const ctx = await window.pantry.getMessageContext(info.convId, info.seq)
@@ -530,8 +525,8 @@ export const useChatStore = defineStore('chat', {
     },
 
     /** 发文件（选择器或拖拽）；对方离线时主进程返回 null（决议 #4） */
-    async sendFilePaths(paths: string[]): Promise<boolean> {
-      const conv = this.activeConv
+    async sendFilePaths(paths: string[], target?: ConversationView): Promise<boolean> {
+      const conv = target ?? this.activeConv
       if (!conv) return false
       const view =
         conv.type === 'group'
@@ -541,8 +536,8 @@ export const useChatStore = defineStore('chat', {
     },
 
     /** 磁盘图片按图片消息发送（拖拽图片/选择器） */
-    async sendImagePath(path: string): Promise<boolean> {
-      const conv = this.activeConv
+    async sendImagePath(path: string, target?: ConversationView): Promise<boolean> {
+      const conv = target ?? this.activeConv
       if (!conv) return false
       const view =
         conv.type === 'group'

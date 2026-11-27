@@ -230,28 +230,28 @@ async function runUpdate(patch: GroupPatch, failureMessage: string): Promise<boo
 </script>
 
 <template>
-  <aside class="panel">
+  <aside class="panel side-panel">
     <div class="head">
       <template v-if="renaming">
         <input v-model="newName" class="rename" maxlength="32" @keydown.enter="rename" />
-        <button class="mini" :title="tr('保存')" :disabled="adminBusy" @click="rename">
-          <PantryIcon name="check" :size="14" />
+        <button class="icon-control compact-icon mini" :title="tr('保存')" :disabled="adminBusy" @click="rename">
+          <PantryIcon name="check" size="compact" />
         </button>
       </template>
       <template v-else>
         <span class="title">{{ group.name }}</span>
         <button
           v-if="canShowAdmin"
-          class="mini"
+          class="icon-control compact-icon mini"
           :title="tr('改名')"
           @click="((renaming = true), (newName = group.name))"
         >
-          <PantryIcon name="edit" :size="14" />
+          <PantryIcon name="edit" size="compact" />
         </button>
       </template>
       <span class="spacer"></span>
-      <button class="mini" :title="tr('关闭')" @click="emit('close')">
-        <PantryIcon name="x" :size="14" />
+      <button class="icon-control compact-icon mini" :title="tr('关闭')" @click="emit('close')">
+        <PantryIcon name="x" size="compact" />
       </button>
     </div>
 
@@ -315,22 +315,22 @@ async function runUpdate(patch: GroupPatch, failureMessage: string): Promise<boo
         <span v-else-if="group.adminIds.includes(id)" class="role-badge">{{ tr('管理员') }}</span>
         <button
           v-if="canSetGroupAdmin(group, id)"
-          class="mini admin-toggle"
+          class="icon-control compact-icon mini admin-toggle"
           :class="{ active: group.adminIds.includes(id) }"
           :title="group.adminIds.includes(id) ? tr('取消管理员') : tr('设为管理员')"
           :disabled="adminBusy"
           @click="toggleAdmin(id)"
         >
-          <PantryIcon name="shield" :size="13" />
+          <PantryIcon name="shield" size="inline" />
         </button>
         <button
           v-if="canRemoveGroupMember(group, id, selfId)"
-          class="mini danger"
+          class="icon-control compact-icon mini danger"
           :title="tr('移出')"
           :disabled="adminBusy"
           @click="removeMember(id)"
         >
-          <PantryIcon name="x" :size="13" />
+          <PantryIcon name="x" size="compact" />
         </button>
       </li>
     </ul>
@@ -350,14 +350,14 @@ async function runUpdate(patch: GroupPatch, failureMessage: string): Promise<boo
         :title="tr('设置群简介')"
         @click="openTextDialog('description')"
       >
-        <PantryIcon name="edit" :size="14" />{{ tr('群简介') }}</button>
+        <PantryIcon name="edit" size="inline" />{{ tr('群简介') }}</button>
       <button
         v-if="canShowAdmin"
         class="add"
         :title="tr('设置群公告')"
         @click="openTextDialog('announce')"
       >
-        <PantryIcon name="bullhorn" :size="14" />{{ tr('群公告') }}</button>
+        <PantryIcon name="bullhorn" size="inline" />{{ tr('群公告') }}</button>
       <button class="leave" @click="leave">{{ tr('退出讨论组') }}</button>
     </template>
     <p v-else class="left-tip">{{ tr('你已不在该讨论组（历史保留，无法发言）') }}</p>
@@ -399,7 +399,7 @@ async function runUpdate(patch: GroupPatch, failureMessage: string): Promise<boo
   width: 248px;
   border-left: 1px solid var(--line);
   background: var(--bg-window);
-  box-shadow: -10px 0 28px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-float);
   z-index: 26;
   display: flex;
   flex-direction: column;
@@ -430,21 +430,6 @@ async function runUpdate(patch: GroupPatch, failureMessage: string): Promise<boo
 }
 .spacer {
   flex: 1;
-}
-.mini {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  color: var(--text-3);
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-}
-.mini:disabled {
-  cursor: default;
-  opacity: 0.45;
 }
 .mini.danger:hover {
   color: var(--danger);
@@ -541,6 +526,7 @@ async function runUpdate(patch: GroupPatch, failureMessage: string): Promise<boo
 .members {
   list-style: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 1;
 }
 .members li {
@@ -654,6 +640,7 @@ async function runUpdate(patch: GroupPatch, failureMessage: string): Promise<boo
   word-break: break-word;
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .description-text {
   max-height: calc(1.5em * 3);

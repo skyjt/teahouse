@@ -385,7 +385,8 @@ onUnmounted(() => {
   border-radius: 8px;
   cursor: zoom-in;
   display: block;
-  border: 1px solid var(--line);
+  outline: 1px solid var(--image-edge);
+  outline-offset: -1px;
 }
 .thumb[data-preview-loading='true'] {
   width: 180px;
@@ -397,7 +398,7 @@ onUnmounted(() => {
   max-width: 120px;
   max-height: 120px;
   cursor: default;
-  border: none;
+  outline: none;
 }
 .thumb.sticker[data-preview-loading='true'] {
   width: 120px;

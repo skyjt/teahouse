@@ -297,18 +297,20 @@ window.addEventListener('beforeunload', cleanup, { once: true })
 .identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .identity span { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-xs); }
 button, select { min-height: 32px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--bg-window); color: var(--text-1); font: inherit; padding: 5px 10px; cursor: pointer; }
-button:hover { background: var(--surface-hover); }
+@media (hover: hover) {
+  button:enabled:hover { background: var(--surface-hover); }
+}
 button:focus-visible, select:focus-visible, .viewport:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 button:disabled { opacity: .5; cursor: default; }
-button.primary { background: var(--primary-weak); border-color: var(--primary); font-weight: 600; }
-button.stop { flex-shrink: 0; border-color: var(--danger); }
+button.primary { color: var(--on-primary); background: var(--primary); border-color: var(--primary); font-weight: 600; }
+button.stop { flex-shrink: 0; color: var(--danger); border-color: var(--danger); }
 button[aria-pressed='true'] { background: var(--primary-weak); border-color: var(--primary); }
 .consent { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.selection-body { flex: 1; min-height: 0; padding: 20px; overflow: auto; }
+.selection-body { flex: 1; min-height: 0; padding: 20px; overflow: auto; overscroll-behavior: contain; }
 h1 { margin: 0 0 4px; font-size: var(--font-lg); line-height: 1.5; overflow-wrap: anywhere; }
 p { margin: 0; color: var(--text-2); line-height: 1.6; }
 .actions { flex-shrink: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
-.sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; margin-top: 16px; }
 .sources label { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 2px solid var(--line); border-radius: var(--radius-control); cursor: pointer; }
 .sources label.selected, .sources label:focus-within { border-color: var(--primary); background: var(--primary-weak); }
 .sources input { position: absolute; top: 12px; left: 12px; accent-color: var(--primary); }
@@ -319,7 +321,9 @@ p { margin: 0; color: var(--text-2); line-height: 1.6; }
 .controls select { width: 180px; }
 .target { color: var(--text-2); font-size: var(--font-xs); }
 .zoom { display: flex; margin-left: auto; }
-.zoom button { border-radius: 0; }
+.zoom button { border-radius: 0; font-variant-numeric: tabular-nums; }
+.zoom button + button { margin-inline-start: -1px; }
+.zoom button[aria-pressed="true"] { position: relative; z-index: 1; font-weight: 600; }
 .zoom button:first-child { border-radius: var(--radius-control) 0 0 var(--radius-control); }
 .zoom button:last-child { border-radius: 0 var(--radius-control) var(--radius-control) 0; }
 .stale { position: absolute; top: 8px; left: 12px; padding: 6px 12px; background: var(--bg-window); color: var(--text-1); border: 1px solid var(--danger); border-radius: var(--radius-control); font-size: var(--font-sm); }
@@ -331,7 +335,7 @@ p { margin: 0; color: var(--text-2); line-height: 1.6; }
 .fit .picture { width: 100%; height: 100%; }
 .fit .picture :deep(canvas) { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; cursor: default; }
 .waiting { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; pointer-events: none; color: var(--text-2); }
-footer { flex-shrink: 0; padding: 6px 16px; color: var(--text-2); font-size: var(--font-xs); border-top: 1px solid var(--line); }
+footer { font-variant-numeric: tabular-nums; flex-shrink: 0; padding: 6px 16px; color: var(--text-2); font-size: var(--font-xs); border-top: 1px solid var(--line); }
 .sharing { border: 1px solid var(--line); box-sizing: border-box; }
 .sharing .toolbar { -webkit-app-region: drag; }
 .sharing button { -webkit-app-region: no-drag; }

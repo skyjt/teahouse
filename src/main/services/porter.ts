@@ -153,7 +153,7 @@ export class PorterService {
 
   export(format: ExportFormat, path: string, options?: DataExportOptions): void {
     if (format === 'backup') {
-      this.exportBackup(path, options)
+      this.prepareBackup(options).writeTo(path)
       return
     }
     const messages = this.messages(options)
@@ -206,46 +206,35 @@ export class PorterService {
     return result
   }
 
-  private exportBackup(path: string, options?: DataExportOptions): void {
-    const conversations = this.conversations(options)
+  prepareBackup(options?: DataExportOptions): { counts: Manifest['counts']; writeTo(path: string): void } {
     const messages = this.messages(options)
-    const peers = this.peers()
-    const groups = this.groups()
-    const stickers = this.stickers()
-    const transfers = this.transfers(messages)
-    const avatarHashes = this.avatarHashes(peers, groups, this.selfAvatarHash)
-    const mediaEntries = new Set(transfers.filter((t) => t.archivePath).map((t) => t.archivePath as string))
-    for (const sticker of stickers) {
-      if (sticker.archivePath) mediaEntries.add(sticker.archivePath)
+    const byDate = options?.fromTs !== undefined || options?.toTs !== undefined
+    const scoped = !!options?.convId || byDate
+    let conversations = this.conversations(options)
+    let groups = this.groups()
+    let peers = this.peers()
+    const transfers = this.transfers(messages, options)
+    if (byDate) {
+      const messageConvs = new Set(messages.map((msg) => msg.convId))
+      conversations = conversations.filter((conv) => messageConvs.has(conv.id))
     }
-    for (const hash of avatarHashes) {
-      if (this.avatarEntry(hash)) mediaEntries.add(`media/avatars/${hash}.webp`)
-    }
-    const manifest: Manifest = {
-      formatVer: 1,
-      exportedAt: Date.now(),
-      exportedBy: this.selfId,
-      nick: this.nick,
-      ...(isAvatarHash(this.selfAvatarHash) ? { avatarHash: this.selfAvatarHash } : {}),
-      counts: {
-        conversations: conversations.length,
-        messages: messages.length,
-        peers: peers.length,
-        groups: groups.length,
-        stickers: stickers.length,
-        transfers: transfers.length,
-        media: mediaEntries.size
+    if (scoped) {
+      const groupIds = new Set(conversations.filter((conv) => conv.type === 'group').map((conv) => conv.peerId))
+      groups = groups.filter((group) => groupIds.has(group.groupId))
+      const peerIds = new Set(conversations.filter((conv) => conv.type === 'single').map((conv) => conv.peerId))
+      for (const group of groups) {
+        delete group.adminSecretHash
+        delete group.adminHint
+        for (const member of group.members) peerIds.add(member)
       }
+      for (const msg of messages) peerIds.add(msg.senderId)
+      for (const transfer of transfers) peerIds.add(transfer.peerId)
+      peers = peers.filter((peer) => peerIds.has(peer.nodeId))
     }
-    const entries: ZipEntry[] = [
-      { name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8') },
-      { name: 'conversations.jsonl', data: Buffer.from(jsonl(conversations), 'utf8') },
-      { name: 'messages.jsonl', data: Buffer.from(jsonl(messages), 'utf8') },
-      { name: 'peers.jsonl', data: Buffer.from(jsonl(peers), 'utf8') },
-      { name: 'groups.jsonl', data: Buffer.from(jsonl(groups), 'utf8') },
-      { name: 'stickers.jsonl', data: Buffer.from(jsonl(stickers), 'utf8') },
-      { name: 'transfers.jsonl', data: Buffer.from(jsonl(transfers), 'utf8') }
-    ]
+    const stickers = scoped ? [] : this.stickers()
+    const selfAvatar = scoped ? undefined : this.selfAvatarHash
+    const avatarHashes = this.avatarHashes(peers, groups, selfAvatar)
+    const entries: ZipEntry[] = []
     for (const transfer of transfers) {
       if (transfer.archivePath) this.addMediaEntry(entries, transfer.archivePath, savedPathOf(transfer.files))
     }
@@ -256,7 +245,33 @@ export class PorterService {
       const entry = this.avatarEntry(hash)
       if (entry) entries.push(entry)
     }
-    writeStoreZip(path, entries)
+    const manifest: Manifest = {
+      formatVer: 1,
+      exportedAt: Date.now(),
+      exportedBy: this.selfId,
+      nick: this.nick,
+      ...(isAvatarHash(selfAvatar) ? { avatarHash: selfAvatar } : {}),
+      counts: {
+        conversations: conversations.length,
+        messages: messages.length,
+        peers: peers.length,
+        groups: groups.length,
+        stickers: stickers.length,
+        transfers: transfers.length,
+        media: entries.length
+      }
+    }
+    const transferMetadata = scoped ? transfers.map((t) => ({ ...t, files: rewriteFilesBlob(t.files, null) })) : transfers
+    entries.push(
+      { name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8') },
+      { name: 'conversations.jsonl', data: Buffer.from(jsonl(conversations), 'utf8') },
+      { name: 'messages.jsonl', data: Buffer.from(jsonl(messages), 'utf8') },
+      { name: 'peers.jsonl', data: Buffer.from(jsonl(peers), 'utf8') },
+      { name: 'groups.jsonl', data: Buffer.from(jsonl(groups), 'utf8') },
+      { name: 'stickers.jsonl', data: Buffer.from(jsonl(stickers), 'utf8') },
+      { name: 'transfers.jsonl', data: Buffer.from(jsonl(transferMetadata), 'utf8') }
+    )
+    return { counts: manifest.counts, writeTo: (path) => writeStoreZip(path, entries) }
   }
 
   private conversations(options?: DataExportOptions): ConvDump[] {
@@ -346,7 +361,9 @@ export class PorterService {
     })
   }
 
-  private transfers(messages: MessageDump[]): TransferDump[] {
+  private transfers(messages: MessageDump[], options?: DataExportOptions): TransferDump[] {
+    const { clause, params } = messageWhere(options)
+    const scope = clause ? `WHERE msg_id IN (SELECT id FROM messages ${clause})` : ''
     const mediaTransferIds = new Set(
       messages
         .filter((msg) => msg.kind === 'image' || msg.kind === 'sticker')
@@ -358,9 +375,9 @@ export class PorterService {
         `SELECT transfer_id AS transferId, msg_id AS msgId, peer_id AS peerId,
                 direction, files, status, bytes_done AS bytesDone, total, ts,
                 expires_at AS expiresAt
-         FROM transfers ORDER BY ts ASC`
+         FROM transfers ${scope} ORDER BY ts ASC`
       )
-      .all() as TransferDump[]
+      .all(...params) as TransferDump[]
     return rows.map((row) => {
       const savedPath = savedPathOf(row.files)
       const archivePath =
@@ -446,7 +463,7 @@ export class PorterService {
              WHEN excluded.rev > groups.rev OR (excluded.rev = groups.rev AND excluded.updated_ts >= groups.updated_ts)
              THEN excluded.announce ELSE groups.announce END`
       ),
-      groupGet: this.db.prepare('SELECT description, announce FROM groups WHERE group_id = ?'),
+      groupGet: this.db.prepare('SELECT description, announce, admin_secret_hash AS adminSecretHash, admin_hint AS adminHint FROM groups WHERE group_id = ?'),
       convUpsert: this.db.prepare(
         `INSERT INTO conversations (id, type, peer_or_group_id, last_ts, pinned, muted, mentioned)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -497,13 +514,13 @@ export class PorterService {
     const adminIds = [...new Set((group.adminIds ?? []).map((id) =>
       id === exportedBy ? this.selfId : id
     ))].filter((id) => id !== ownerId && normalizedMembers.includes(id))
-    const adminSecretHash =
-      typeof group.adminSecretHash === 'string' ? group.adminSecretHash.slice(0, 64) : ''
-    const adminHint =
-      adminSecretHash && typeof group.adminHint === 'string' ? group.adminHint.slice(0, 40) : ''
     const local = statements.groupGet.get(group.groupId) as
-      | { description?: unknown; announce?: unknown }
+      | { description?: unknown; announce?: unknown; adminSecretHash: string; adminHint: string }
       | undefined
+    const adminSecretHash = typeof group.adminSecretHash === 'string'
+      ? group.adminSecretHash.slice(0, 64) : local?.adminSecretHash ?? ''
+    const adminHint = adminSecretHash
+      ? (typeof group.adminHint === 'string' ? group.adminHint.slice(0, 40) : local?.adminHint ?? '') : ''
     const description =
       typeof group.description === 'string'
         ? group.description.trim().slice(0, LIMITS.groupDescription)

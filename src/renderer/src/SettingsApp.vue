@@ -214,6 +214,12 @@ const scanTip = ref('')
 const confirmingCidr = ref<string | null>(null)
 const transfers = ref<TransferView[]>([])
 const conversations = ref<ConversationView[]>([])
+const contactNames = ref<Record<string, string>>({})
+const groupNames = ref<Record<string, string>>({})
+const backupNotice = ref('')
+const backupError = ref(false)
+const backupBusy = ref(false)
+const resetDialog = ref<HTMLDialogElement | null>(null)
 const exportConvId = ref('')
 const exportFrom = ref('')
 const exportTo = ref('')
@@ -293,8 +299,13 @@ async function reload(): Promise<void> {
   // Vue 更新主题后再跨过一次绘制；窗口保持隐藏直到深/浅色首帧就绪。
   await nextTick()
   requestAnimationFrame(() => requestAnimationFrame(() => window.pantry.settingsReady()))
-  conversations.value = await window.pantry.listConversations()
-  transfers.value = await window.pantry.listTransfers(30)
+  const [convs, peers, groups, latestTransfers] = await Promise.all([
+    window.pantry.listConversations(), window.pantry.getPeers(), window.pantry.listGroups(), window.pantry.listTransfers(30)
+  ])
+  conversations.value = convs
+  contactNames.value = Object.fromEntries(peers.map((p) => [p.nodeId, p.remark || p.nick]))
+  groupNames.value = Object.fromEntries(groups.map((g) => [g.groupId, g.name]))
+  transfers.value = latestTransfers
 }
 
 function syncForm(s: SettingsView): void {
@@ -502,6 +513,7 @@ async function changeSendKey(value: 'enter' | 'ctrlEnter'): Promise<void> {
 }
 
 async function resetAppSettings(): Promise<void> {
+  resetDialog.value?.close()
   await saveApp(
     {
       notifications: true,
@@ -666,8 +678,25 @@ async function finishPortEdit(field: PortField): Promise<void> {
 }
 
 async function exportData(format: 'backup' | 'html' | 'txt'): Promise<void> {
-  const path = await window.pantry.exportData(format, exportOptions())
-  flashSaved(path ? tr('已导出') : tr('导出已取消'))
+  if (backupBusy.value) return
+  backupNotice.value = ''
+  backupError.value = false
+  if (exportFrom.value && exportTo.value && exportFrom.value > exportTo.value) {
+    backupError.value = true
+    backupNotice.value = tr('结束日期应在开始日期当天或之后。')
+    return
+  }
+  backupBusy.value = true
+  try {
+    const path = await window.pantry.exportData(format, exportOptions())
+    backupNotice.value = path ? tr('已导出') : tr('导出已取消')
+  } catch (error) {
+    backupError.value = true
+    backupNotice.value = String(error).includes('backup-storage-unavailable')
+      ? tr('本机聊天数据库不可用，请检查存储状态。') : tr('导出失败，请选择可写入的位置后重试。')
+  } finally {
+    backupBusy.value = false
+  }
 }
 
 function exportOptions(): DataExportOptions | undefined {
@@ -694,12 +723,29 @@ function dateEnd(value: string): number | null {
 
 function convLabel(conv: ConversationView): string {
   const prefix = conv.type === 'group' ? tr('讨论组') : tr('单聊')
-  return `${prefix} ${conv.peerId}${conv.preview ? ` · ${conv.preview.slice(0, 18)}` : ''}`
+  const name = (conv.type === 'group' ? groupNames.value : contactNames.value)[conv.peerId]
+  return `${name || prefix + ' ' + conv.peerId.slice(0, 8)}${conv.preview ? ` · ${conv.preview.slice(0, 18)}` : ''}`
 }
 
 async function importData(): Promise<void> {
-  const result = await window.pantry.importData()
-  flashSaved(result ? tr('已导入 {0} 条，跳过 {1} 条', { 0: result.imported, 1: result.skipped }) : tr('导入已取消'))
+  if (backupBusy.value) return
+  backupBusy.value = true
+  backupError.value = false
+  backupNotice.value = ''
+  try {
+    const result = await window.pantry.importData()
+    backupNotice.value = result ? tr('已导入 {0} 条，跳过 {1} 条', { 0: result.imported, 1: result.skipped }) : tr('导入已取消')
+    if (result) await reload()
+  } catch (error) {
+    backupError.value = true
+    const reason = String(error)
+    if (reason.includes('backup-storage-unavailable')) backupNotice.value = tr('本机聊天数据库不可用，请检查存储状态。')
+    else if (reason.includes('backup-storage-full')) backupNotice.value = tr('本机存储空间不足，请腾出空间后重试。')
+    else if (reason.includes('backup-permission-denied')) backupNotice.value = tr('权限不足，请检查备份文件及本机存储目录的访问权限。')
+    else backupNotice.value = tr('备份文件无法读取，请重新选择或重新导出。')
+  } finally {
+    backupBusy.value = false
+  }
 }
 
 async function revealTransfer(transferId: string): Promise<void> {
@@ -812,6 +858,7 @@ async function confirmRemove(cidr: string): Promise<void> {
           :key="item.id"
           :title="item.label"
           :aria-label="item.label"
+          :aria-current="section === item.id ? 'page' : undefined"
           :class="{ on: section === item.id }"
           @click="section = item.id"
         >
@@ -1047,8 +1094,21 @@ async function confirmRemove(cidr: string): Promise<void> {
               />
             </label>
             <div class="panel-actions">
-              <NButton secondary @click="resetAppSettings">{{ tr('重置应用设置') }}</NButton>
+              <NButton secondary @click="saveApp({ theme: 'light', fontScale: 100 })">{{ tr('恢复默认外观') }}</NButton>
             </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>{{ tr('重置应用设置') }}</h2></div>
+            <NButton secondary @click="resetDialog?.showModal()">{{ tr('恢复默认设置…') }}</NButton>
+            <dialog ref="resetDialog" class="reset-dialog" :aria-label="tr('重置应用设置')">
+              <h2>{{ tr('重置应用设置') }}</h2>
+              <p>{{ tr('将清除 {0} 个手动节点和 {1} 个扫描网段，恢复默认端口，并重新允许同事直接发送文件。', { 0: settings.manualPeers.length, 1: settings.scanRangeItems.length }) }}</p>
+              <p>{{ tr('外观、通知、启动与关闭行为、发送键和快捷键也会恢复默认。') }}</p>
+              <div class="button-row">
+                <button type="button" autofocus @click="resetDialog?.close()">{{ tr('取消') }}</button>
+                <button type="button" @click="resetAppSettings">{{ tr('确认重置') }}</button>
+              </div>
+            </dialog>
           </div>
         </section>
 
@@ -1114,9 +1174,9 @@ async function confirmRemove(cidr: string): Promise<void> {
             <div class="setting-line">
               <div>
                 <strong>{{ tr('我的文件柜') }}</strong>
-                <small>{{ tr('共享目录、默认权限、按联系人例外都在主界面的「文件柜」里设置——左侧导航栏的文件柜按钮即可进入。') }}</small>
+                <small>{{ tr('选择本机文件夹，并设置哪些同事可以下载或上传。') }}</small>
               </div>
-              <NButton secondary size="small" @click="openCabinet">{{ tr('打开文件柜') }}</NButton>
+              <NButton secondary size="small" @click="openCabinet">{{ tr('管理共享') }}</NButton>
             </div>
           </div>
           <div class="panel">
@@ -1170,7 +1230,7 @@ async function confirmRemove(cidr: string): Promise<void> {
           <div class="panel">
             <div class="panel-head">
               <h2>{{ tr('聊天记录') }}</h2>
-              <p>{{ tr('导出阅读格式或迁移备份包；导入时会按消息 ID 去重。') }}</p>
+              <p>{{ tr('备份包含聊天记录和图片。普通文件仅保留传输记录，换机时请另行复制文件。') }}</p>
             </div>
             <label class="field">
               <span>{{ tr('导出会话') }}</span>
@@ -1189,11 +1249,12 @@ async function confirmRemove(cidr: string): Promise<void> {
               </div>
             </div>
             <div class="button-row export-actions">
-              <NButton secondary @click="exportData('backup')">{{ tr('备份包') }}</NButton>
-              <NButton secondary @click="exportData('html')">HTML</NButton>
-              <NButton secondary @click="exportData('txt')">TXT</NButton>
-              <NButton type="primary" secondary @click="importData">{{ tr('导入') }}</NButton>
+              <NButton secondary :disabled="backupBusy" @click="exportData('backup')">{{ exportOptions() ? tr('导出所选记录') : tr('完整迁移备份') }}</NButton>
+              <NButton secondary :disabled="backupBusy" @click="exportData('html')">HTML</NButton>
+              <NButton secondary :disabled="backupBusy" @click="exportData('txt')">TXT</NButton>
+              <NButton type="primary" secondary :disabled="backupBusy" @click="importData">{{ tr('导入') }}</NButton>
             </div>
+            <p v-if="backupNotice" role="status" :class="{ 'backup-error': backupError }">{{ backupNotice }}</p>
           </div>
 
           <div class="panel">
@@ -1237,8 +1298,8 @@ async function confirmRemove(cidr: string): Promise<void> {
             <ul v-else class="chips">
               <li v-for="p in settings.manualPeers" :key="p">
                 <span>{{ p }}</span>
-                <button class="icon-button" :title="tr('移除')" @click="removePeer(p)">
-                  <PantryIcon name="x" :size="13" />
+                <button class="icon-control compact-icon icon-button" :title="tr('移除')" @click="removePeer(p)">
+                  <PantryIcon name="x" size="compact" />
                 </button>
               </li>
             </ul>
@@ -1274,11 +1335,11 @@ async function confirmRemove(cidr: string): Promise<void> {
                   <span class="count-badge" :class="{ zero: r.nodeCount === 0 }">{{ r.nodeCount }}</span>
                 </span>
                 <span class="range-ops">
-                  <button class="icon-button accent" :title="tr('刷新该网段（重新探测）')" @click="rescan(r.cidr)">
-                    <PantryIcon name="refresh" :size="14" />
+                  <button class="icon-control compact-icon icon-button accent" :title="tr('刷新该网段（重新探测）')" @click="rescan(r.cidr)">
+                    <PantryIcon name="refresh" size="compact" />
                   </button>
-                  <button class="icon-button danger" :title="tr('删除该网段')" @click="confirmingCidr = r.cidr">
-                    <PantryIcon name="x" :size="14" />
+                  <button class="icon-control compact-icon icon-button danger" :title="tr('删除该网段')" @click="confirmingCidr = r.cidr">
+                    <PantryIcon name="x" size="compact" />
                   </button>
                 </span>
                 <div v-if="confirmingCidr === r.cidr" class="range-confirm">
@@ -1519,7 +1580,7 @@ async function confirmRemove(cidr: string): Promise<void> {
         </section>
       </div>
     </Transition>
-    <Transition name="toast">
+    <Transition name="notice">
       <div v-if="toast" class="toast" role="status" aria-live="polite">
         <PantryIcon name="check" :size="15" />
         <span>{{ toast }}</span>
@@ -1548,13 +1609,13 @@ async function confirmRemove(cidr: string): Promise<void> {
   --sp-4: 16px;
   --sp-5: 20px;
   --sp-6: 24px;
-  --r-card: 8px;
-  --r-control: 6px;
-  --r-pill: 999px;
+  --r-card: var(--radius-panel);
+  --r-control: var(--radius-control);
+  --r-pill: var(--radius-pill);
   --fs-title: 20px;
   --fs-section: 15px;
-  --fs-body: 13px;
-  --fs-aux: 12px;
+  --fs-body: var(--font-sm);
+  --fs-aux: var(--font-xs);
   display: flex;
   position: relative;
   isolation: isolate;
@@ -1581,6 +1642,7 @@ async function confirmRemove(cidr: string): Promise<void> {
   width: 188px;
   flex: 0 0 188px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-right: 1px solid var(--line);
   background: var(--primary-weak);
   box-shadow: none;
@@ -1620,17 +1682,11 @@ async function confirmRemove(cidr: string): Promise<void> {
   display: flex;
   align-items: center;
   gap: 9px;
-  transition:
-    color 150ms ease,
-    background 150ms ease,
-    box-shadow 150ms ease,
-    transform 90ms ease-out;
+  transition: color var(--motion-feedback) ease, background-color var(--motion-feedback) ease;
 }
 
 .nav-icon {
   flex-shrink: 0;
-  opacity: 1;
-  transition: opacity 150ms ease;
 }
 
 .nav button span {
@@ -1645,11 +1701,6 @@ async function confirmRemove(cidr: string): Promise<void> {
   color: var(--text-1);
 }
 
-.nav button:hover .nav-icon,
-.nav button.on .nav-icon {
-  opacity: 1;
-}
-
 .nav button.on {
   background: var(--surface-selected);
   color: var(--primary);
@@ -1658,7 +1709,7 @@ async function confirmRemove(cidr: string): Promise<void> {
 }
 
 .nav button:active {
-  transform: scale(0.98);
+  background: var(--surface-pressed);
 }
 
 .body {
@@ -1668,6 +1719,7 @@ async function confirmRemove(cidr: string): Promise<void> {
   margin-top: 32px;
   padding: 4px 28px 24px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .page-head {
@@ -1850,9 +1902,7 @@ async function confirmRemove(cidr: string): Promise<void> {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition:
-    color 140ms ease,
-    transform 90ms ease-out;
+  transition: color var(--motion-feedback) ease, background-color var(--motion-feedback) ease;
 }
 
 .preference-segment button.on {
@@ -1866,7 +1916,7 @@ async function confirmRemove(cidr: string): Promise<void> {
 }
 
 .preference-segment button:active {
-  transform: scale(0.96);
+  background: var(--surface-pressed);
 }
 
 .theme-segment {
@@ -1915,9 +1965,6 @@ async function confirmRemove(cidr: string): Promise<void> {
     transition: none;
   }
 
-  .preference-segment button:active {
-    transform: none;
-  }
 }
 
 .field-grid {
@@ -2108,13 +2155,11 @@ async function confirmRemove(cidr: string): Promise<void> {
   cursor: pointer;
   font-size: 15px;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
-  transition:
-    transform 0.12s ease,
-    box-shadow 0.12s ease;
+  transition: box-shadow var(--motion-feedback) ease;
 }
 
 .avatar-choice:hover {
-  transform: scale(1.12);
+  box-shadow: 0 0 0 2px var(--primary-border);
 }
 
 .avatar-choice.on {
@@ -2138,13 +2183,11 @@ async function confirmRemove(cidr: string): Promise<void> {
   border-radius: 50%;
   box-shadow: 0 0 0 1px var(--line);
   cursor: pointer;
-  transition:
-    transform 0.12s ease,
-    box-shadow 0.12s ease;
+  transition: box-shadow var(--motion-feedback) ease;
 }
 
 .color-choice:hover {
-  transform: scale(1.12);
+  box-shadow: 0 0 0 2px var(--primary-border);
 }
 
 .color-choice.on {
@@ -2207,8 +2250,7 @@ async function confirmRemove(cidr: string): Promise<void> {
 }
 
 .ghost:hover,
-.primary.subtle:hover,
-.icon-button:hover {
+.primary.subtle:hover {
   border-color: var(--primary);
   color: var(--primary);
 }
@@ -2217,62 +2259,6 @@ async function confirmRemove(cidr: string): Promise<void> {
 .ghost:disabled {
   opacity: 0.45;
   cursor: default;
-}
-
-/* 保存按钮成功态（用户反馈）：保存成功就地变「✓ 保存成功！」+ 确认弹动，3 秒后恢复 */
-.save-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition:
-    background-color 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.save-btn.is-saved {
-  box-shadow: 0 0 0 3px var(--primary-weak);
-  animation: save-pop 0.34s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-/* 次要保存按钮（蓝色弱底）成功时提升为实心蓝色 + 白字，让对勾与文案有足够对比 */
-.primary.subtle.save-btn.is-saved {
-  background: var(--primary);
-  color: var(--on-primary);
-}
-
-.save-check {
-  animation: save-check-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes save-pop {
-  0% {
-    transform: scale(1);
-  }
-  45% {
-    transform: scale(1.06);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes save-check-in {
-  0% {
-    transform: scale(0.2);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .save-btn.is-saved,
-  .save-check {
-    animation: none;
-  }
 }
 
 .compact {
@@ -2319,18 +2305,6 @@ async function confirmRemove(cidr: string): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.icon-button {
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-3);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
 }
 
 .empty-panel,
@@ -2446,17 +2420,14 @@ async function confirmRemove(cidr: string): Promise<void> {
 /* 操作按钮平时即带淡淡意图色（决议 #160）：刷新淡蓝色、删除淡红，hover 加深 */
 .icon-button.accent {
   color: var(--primary);
-  opacity: 0.55;
 }
 
 .icon-button.danger {
   color: var(--danger);
-  opacity: 0.55;
 }
 
-.icon-button.accent:hover,
 .icon-button.danger:hover {
-  opacity: 1;
+  color: var(--danger);
 }
 
 /* 删除二次确认覆盖层（决议 #160）：盖住该行问「删除该网段？」 */
@@ -2779,6 +2750,18 @@ async function confirmRemove(cidr: string): Promise<void> {
   background: rgba(0, 0, 0, 0.48);
 }
 
+.reset-dialog {
+  max-width: min(390px, 80vw);
+  background: var(--bg-window);
+  color: var(--text-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+}
+.reset-dialog::backdrop { background: rgba(0, 0, 0, .4); }
+.reset-dialog h2 { margin-top: 0; font-size: 16px; }
+.reset-dialog button { padding: 5px 12px; cursor: pointer; }
+.backup-error { color: var(--danger); }
 .port-warning-dialog {
   width: min(392px, 100%);
   padding: 22px;
@@ -2846,7 +2829,7 @@ async function confirmRemove(cidr: string): Promise<void> {
 
 .port-warning-enter-from .port-warning-dialog,
 .port-warning-leave-to .port-warning-dialog {
-  transform: translateY(6px) scale(0.985);
+  transform: translateY(4px);
 }
 
 .about-update-help:hover .about-help-pop,
@@ -2954,6 +2937,10 @@ async function confirmRemove(cidr: string): Promise<void> {
     padding: 0 8px;
   }
 
+  .setting-line { flex-wrap: wrap; }
+  .setting-line > div:first-child { flex-basis: 15em; }
+  .page-head { flex-wrap: wrap; }
+
   .field-grid,
   .port-grid {
     grid-template-columns: 1fr;
@@ -2982,6 +2969,11 @@ async function confirmRemove(cidr: string): Promise<void> {
   }
 }
 
+@media (max-height: 420px) {
+  .sidebar { padding-bottom: 8px; }
+  .sidebar-heading { padding-bottom: 10px; }
+}
+
 /* 「设置已保存」浮层 toast（决议 #152/#216/#218）：
    固定在设置窗口整体水平居中、底部上浮；
    深色胶囊对比当前主题、currentColor 对勾保证两主题对比、蓝色味柔影（非纯黑）；淡入 + 上移 / 淡出 + 下移，尊重 reduced-motion */
@@ -3008,35 +3000,15 @@ async function confirmRemove(cidr: string): Promise<void> {
 .toast .pantry-icon {
   flex: none;
 }
-.toast-enter-active {
-  transition: opacity 0.24s ease, transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.toast-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
-  transform: translate(-50%, 10px);
-}
 @media (prefers-reduced-motion: reduce) {
-  .nav button {
+  .nav button, .avatar-choice, .color-choice {
     transition: none;
   }
-  .nav button:active {
-    transform: none;
-  }
-  .toast-enter-active,
-  .toast-leave-active,
   .port-warning-enter-active,
   .port-warning-leave-active,
   .port-warning-enter-active .port-warning-dialog,
   .port-warning-leave-active .port-warning-dialog {
-    transition: opacity 0.16s ease;
-  }
-  .toast-enter-from,
-  .toast-leave-to {
-    transform: translateX(-50%);
+    transition: none;
   }
   .port-warning-enter-from .port-warning-dialog,
   .port-warning-leave-to .port-warning-dialog {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { tr } from '../utils/i18n'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NButton, NInput } from 'naive-ui'
 import type { PeerView } from '../../../shared/ipc'
 import { GROUP_MAX_MEMBERS } from '../../../shared/protocol'
@@ -16,10 +16,12 @@ import { isPlainEscape } from '../utils/escape'
 // 发起讨论组（ui-design §7.1）：搜索选人 → 下一步设置组名 / 管理密码 / 密码提示。
 
 const props = defineProps<{ preselect?: string[] }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; created: [] }>()
 
 const peersStore = usePeersStore()
 const chatStore = useChatStore()
+const dialogEl = ref<HTMLDialogElement | null>(null)
+const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
 const step = ref<'members' | 'settings'>('members')
 const name = ref('')
 const adminPassword = ref('')
@@ -65,6 +67,27 @@ watch(pickedIds, (ids) => {
   if (ids.length === 0) step.value = 'members'
 })
 
+watch(step, async (current) => {
+  await nextTick()
+  const selector = current === 'settings' ? '#group-name' : 'input'
+  dialogEl.value?.querySelector<HTMLInputElement>(selector)?.focus()
+})
+
+function containTab(event: KeyboardEvent): void {
+  const controls = Array.from(dialogEl.value?.querySelectorAll<HTMLElement>(
+    'button:not(:disabled), input:not(:disabled), summary, [tabindex="0"]'
+  ) ?? []).filter((el) => el.getClientRects().length && !el.closest('details:not([open]) > :not(summary)'))
+  const first = controls[0]
+  const last = controls[controls.length - 1]
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last?.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first?.focus()
+  }
+}
+
 function displayName(peer: PeerView): string {
   return peer.remark || peer.nick
 }
@@ -91,6 +114,7 @@ async function create(): Promise<void> {
       return
     }
     await chatStore.openConv(`group:${group.groupId}`).catch(() => undefined)
+    emit('created')
     emit('close')
   } catch {
     createError.value = tr('创建失败，请重试。')
@@ -120,17 +144,24 @@ function onEscape(event: KeyboardEvent): void {
   event.preventDefault()
   if (!creating.value) emit('close')
 }
-onMounted(() => document.addEventListener('keydown', onEscape))
-onUnmounted(() => document.removeEventListener('keydown', onEscape))
+onMounted(() => {
+  dialogEl.value?.showModal()
+  dialogEl.value?.querySelector<HTMLInputElement>('input')?.focus()
+  document.addEventListener('keydown', onEscape)
+})
+onUnmounted(() => {
+  document.removeEventListener('keydown', onEscape)
+  if (opener?.isConnected) opener.focus()
+})
 </script>
 
 <template>
-  <div
-    class="mask"
+  <dialog ref="dialogEl"
+    class="mask" :aria-label="tr('发起讨论组')" @keydown.tab="containTab" @cancel.prevent
     @pointerdown="rememberMaskPointerDown"
     @click.self="requestMaskClose"
   >
-    <div class="dialog" role="dialog" aria-modal="true" :aria-label="tr('发起讨论组')">
+    <div class="dialog">
       <header class="head">
         <h3>{{ tr('发起讨论组') }}</h3>
         <div class="steps">
@@ -150,42 +181,43 @@ onUnmounted(() => document.removeEventListener('keydown', onEscape))
             :input-props="{ id: 'group-name' }"
           />
         </div>
-        <div class="field">
-          <label for="group-admin-password">{{ tr('管理密码') }}</label>
-          <NInput
-            v-model:value="adminPassword"
-            class="form-input"
-            maxlength="64"
-            type="password"
-            :placeholder="tr('选填；留空仅创建 IP 可管理')"
-            :input-props="{ id: 'group-admin-password' }"
-          />
-        </div>
-        <div class="field">
-          <label for="group-admin-password-confirm">{{ tr('确认密码') }}</label>
-          <NInput
-            v-model:value="adminPasswordConfirm"
-            class="form-input"
-            maxlength="64"
-            type="password"
-            :placeholder="tr('再次输入管理密码')"
-            :input-props="{ id: 'group-admin-password-confirm' }"
-          />
-        </div>
-        <div class="field">
-          <label for="group-admin-hint">{{ tr('密码提示') }}</label>
-          <NInput
-            v-model:value="adminHint"
-            class="form-input"
-            maxlength="40"
-            :placeholder="tr('选填；成员输入密码时显示')"
-            :input-props="{ id: 'group-admin-hint' }"
-          />
-        </div>
-        <p v-if="passwordError || createError" class="error" aria-live="polite">
-          {{ passwordError || createError }}
-        </p>
-        <p v-else class="hint">{{ tr('管理密码不会保存明文；提示只用于帮成员回忆密码。') }}</p>
+        <details class="admin-options">
+          <summary>{{ tr('管理设置（选填）') }}</summary>
+          <div class="field">
+            <label for="group-admin-password">{{ tr('管理密码') }}</label>
+            <NInput
+              v-model:value="adminPassword"
+              class="form-input"
+              maxlength="64"
+              type="password"
+              :placeholder="tr('选填；留空仅创建 IP 可管理')"
+              :input-props="{ id: 'group-admin-password' }"
+            />
+          </div>
+          <div class="field">
+            <label for="group-admin-password-confirm">{{ tr('确认密码') }}</label>
+            <NInput
+              v-model:value="adminPasswordConfirm"
+              class="form-input"
+              maxlength="64"
+              type="password"
+              :placeholder="tr('再次输入管理密码')"
+              :input-props="{ id: 'group-admin-password-confirm' }"
+            />
+          </div>
+          <div class="field">
+            <label for="group-admin-hint">{{ tr('密码提示') }}</label>
+            <NInput
+              v-model:value="adminHint"
+              class="form-input"
+              maxlength="40"
+              :placeholder="tr('选填；成员输入密码时显示')"
+              :input-props="{ id: 'group-admin-hint' }"
+            />
+          </div>
+          <p class="hint">{{ tr('管理密码不会保存明文；提示只用于帮成员回忆密码。') }}</p>
+        </details>
+        <p v-if="passwordError || createError" class="error" aria-live="polite">{{ passwordError || createError }}</p>
       </section>
 
       <GroupMemberPicker
@@ -226,24 +258,38 @@ onUnmounted(() => document.removeEventListener('keydown', onEscape))
         </NButton>
       </div>
     </div>
-  </div>
+  </dialog>
 </template>
 
 <style scoped>
-.mask {
+.mask[open] {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  color: var(--text-1);
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--scrim);
   display: grid;
   place-items: center;
   z-index: 15;
 }
+.mask::backdrop { background: transparent; }
+.admin-options summary { cursor: pointer; margin: 8px 0 12px; }
 .dialog {
-  width: 460px;
+  width: min(460px, 94vw);
+  max-height: 94vh;
+  overflow: auto;
+  overscroll-behavior: contain;
   background: var(--bg-window);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
   padding: 18px 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--shadow-float);
 }
 .head {
   display: flex;

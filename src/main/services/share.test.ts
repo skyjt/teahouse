@@ -395,6 +395,23 @@ describe('ShareService 应答 list / get（§8.2）', () => {
     ).toEqual({ op: 'deny', reqId: 'r4', reason: 'gone' })
   })
 
+  it('更换共享根后，旧目录的分页快照立即失效', () => {
+    let root = mkdtempSync(join(tmpdir(), 'pantry-share-old-'))
+    tmpRoots.push(root)
+    const service = new ShareService({
+      getRoot: () => root,
+      getDefaultMode: () => 'read',
+      getGrants: () => null
+    })
+    const req = { reqId: 'r', path: '', offset: 0 }
+    const first = service.handleList('bob', req)
+    expect(first.op).toBe('list-ok')
+    if (first.op !== 'list-ok') return
+    root = mkdtempSync(join(tmpdir(), 'pantry-share-new-'))
+    tmpRoots.push(root)
+    expect(service.handleList('bob', { ...req, snapshotId: first.snapshotId })).toMatchObject({ op: 'deny', reason: 'gone' })
+  })
+
   it('同一对端列目录限流，超出回 busy；窗口滑过后恢复', () => {
     const { service } = serviceWithRoot()
     for (let i = 0; i < SHARE_LIST_RATE_MAX; i += 1) {

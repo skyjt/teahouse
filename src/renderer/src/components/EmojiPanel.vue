@@ -38,9 +38,9 @@ async function importStickers(): Promise<void> {
 <template>
   <div class="panel">
     <div class="tabs">
-      <button :class="{ on: tab === 'emoji' }" @click="tab = 'emoji'">
+      <button :class="{ on: tab === 'emoji' }" :aria-pressed="tab === 'emoji'" @click="tab = 'emoji'">
         <PantryIcon name="smile" :size="15" />{{ tr('表情') }}</button>
-      <button :class="{ on: tab === 'sticker' }" @click="tab = 'sticker'">
+      <button :class="{ on: tab === 'sticker' }" :aria-pressed="tab === 'sticker'" @click="tab = 'sticker'">
         <PantryIcon name="sticker" :size="15" />{{ tr('表情包') }}</button>
       <button
         class="import-button"
@@ -72,15 +72,12 @@ async function importStickers(): Promise<void> {
         class="stk"
         :class="{ disabled: !props.stickerEnabled }"
         :title="props.stickerEnabled ? tr('点击发送，右键删除') : tr('当前会话不可发表情包')"
-        @click="props.stickerEnabled && emit('sticker', s.id)"
         @contextmenu.prevent="stickers.remove(s.id)"
       >
-        <img
-          :src="`pantry-sticker://${s.id}`"
-          :alt="tr('表情')"
-          loading="lazy"
-          decoding="async"
-        />
+        <button type="button" class="sticker-send" :disabled="!props.stickerEnabled"
+          :aria-label="tr('发送表情 {0}', { 0: index + 1 })" @click="emit('sticker', s.id)">
+          <img :src="`pantry-sticker://${s.id}`" alt="" loading="lazy" decoding="async" />
+        </button>
         <span class="stk-actions" @click.stop>
           <button
             type="button"
@@ -111,11 +108,11 @@ async function importStickers(): Promise<void> {
   bottom: 100%;
   left: 0;
   margin-bottom: 6px;
-  width: 324px;
+  width: min(324px, calc(100vw - 24px));
   background: var(--bg-window);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-float);
   z-index: 8;
 }
 .tabs {
@@ -156,6 +153,7 @@ async function importStickers(): Promise<void> {
 .grid {
   height: 200px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px;
   display: grid;
   gap: 2px;
@@ -207,6 +205,17 @@ async function importStickers(): Promise<void> {
   opacity: 0.45;
   cursor: default;
 }
+.sticker-send {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  cursor: inherit;
+}
+.sticker-send:focus-visible { outline-offset: -2px; }
 .stk img {
   max-width: 100%;
   max-height: 100%;
@@ -215,16 +224,22 @@ async function importStickers(): Promise<void> {
   position: absolute;
   right: 3px;
   bottom: 3px;
-  display: none;
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
   gap: 2px;
 }
-.stk:hover .stk-actions {
-  display: flex;
+.stk:hover .stk-actions, .stk:focus-within .stk-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .stk-actions { opacity: 1; pointer-events: auto; }
 }
 .stk-actions button {
   border: none;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;

@@ -1,9 +1,10 @@
 import { app, BrowserWindow, type Rectangle, type WebContents } from 'electron'
+import type { CaptureInit } from '../../shared/ipc'
 import { join } from 'node:path'
 import { resolveDevRendererUrl } from '../util/renderer-url'
 
 // 截图框选窗（F-CAP-1）：覆盖主屏的无边框置顶窗，经 #/capture 挂 CaptureApp。
-// 截屏图像在窗口加载完成后经 IPC 注入（dataURL）。
+// 窗口加载后一次性注入位图及本次可选的收件人。
 
 let win: BrowserWindow | null = null
 let readyFallbackTimer: ReturnType<typeof setTimeout> | null = null
@@ -21,6 +22,10 @@ function revealCaptureWindow(target: BrowserWindow): void {
   target.focus()
 }
 
+export function isCaptureSender(sender: WebContents): boolean {
+  return !!win && !win.isDestroyed() && win.webContents === sender
+}
+
 /** 只接受当前截图窗的就绪回执，其他 renderer 无法借此操作窗口。 */
 export function showCaptureWindow(sender: WebContents): void {
   if (!win || win.isDestroyed() || win.webContents !== sender) return
@@ -29,7 +34,7 @@ export function showCaptureWindow(sender: WebContents): void {
 
 export function openCaptureWindow(
   bounds: Rectangle,
-  pngBytes: ArrayBuffer,
+  init: CaptureInit,
   onClosed: () => void
 ): void {
   closeCaptureWindow()
@@ -64,7 +69,7 @@ export function openCaptureWindow(
     onClosed()
   })
   captureWin.webContents.on('did-finish-load', () => {
-    captureWin.webContents.send('capture:init', pngBytes)
+    captureWin.webContents.send('capture:init', init)
     // renderer 正常会在首帧后立即回执；超时兜底保证解码异常时仍可按 Esc 退出。
     clearReadyFallback()
     readyFallbackTimer = setTimeout(() => revealCaptureWindow(captureWin), 2500)

@@ -56,8 +56,8 @@ async function sendAll(): Promise<void> {
   <div class="mask" @click.self="emit('close')">
     <div class="dialog">
       <h3>{{ tr('群发消息') }}</h3>
-      <div class="pick-list">
-        <label v-for="p in peersStore.peers" :key="p.nodeId" class="pick">
+      <div class="pick-list recipient-list">
+        <label v-for="p in peersStore.peers" :key="p.nodeId" class="pick recipient-option">
           <input type="checkbox" :checked="picked.has(p.nodeId)" @change="toggle(p.nodeId)" />
           <span class="dot" :class="p.online ? 'on' : 'off'"></span>
           <span class="nm">{{ p.remark || p.nick }}</span>
@@ -84,17 +84,20 @@ async function sendAll(): Promise<void> {
 .mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--scrim);
   display: grid;
   place-items: center;
   z-index: 15;
 }
 .dialog {
-  width: 420px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
   background: var(--bg-window);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   padding: 18px 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--shadow-float);
 }
 h3 {
   font-size: 15px;
@@ -102,7 +105,7 @@ h3 {
 }
 .pick-list {
   max-height: 180px;
-  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 4px;
@@ -116,9 +119,6 @@ h3 {
   font-size: 13px;
   cursor: pointer;
   border-radius: 4px;
-}
-.pick:hover {
-  background: var(--line);
 }
 .dot {
   width: 7px;
@@ -186,7 +186,7 @@ h3 {
 .primary {
   border: none;
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
   font-size: 13px;
   padding: 6px 18px;
   border-radius: 4px;

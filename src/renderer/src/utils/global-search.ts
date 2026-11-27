@@ -7,7 +7,8 @@ export function useGlobalSearch(query: () => string) {
   const searching = ref(false)
   const failed = ref(false)
 
-  watch(query, (q, _previous, onCleanup) => {
+  const attempt = ref(0)
+  watch([query, attempt], ([q], _previous, onCleanup) => {
     let canceled = false
     searching.value = true
     failed.value = false
@@ -27,5 +28,5 @@ export function useGlobalSearch(query: () => string) {
     })
   }, { immediate: true, flush: 'sync' })
 
-  return { result, searching, failed }
+  return { result, searching, failed, retry: () => { attempt.value++ } }
 }

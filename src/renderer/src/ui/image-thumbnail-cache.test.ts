@@ -7,7 +7,7 @@ const directiveSource = readFileSync(
   'utf8'
 )
 const imageBubbleSource = readFileSync(new URL('../components/ImageBubble.vue', import.meta.url), 'utf8')
-const chatPaneSource = readFileSync(new URL('../components/ChatPane.vue', import.meta.url), 'utf8')
+const historySearchSource = readFileSync(new URL('../components/HistorySearch.vue', import.meta.url), 'utf8')
 const imageViewerAppSource = readFileSync(new URL('../ImageViewerApp.vue', import.meta.url), 'utf8')
 const rendererHtml = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
 const mainSource = readFileSync(new URL('../../../main/index.ts', import.meta.url), 'utf8')
@@ -30,8 +30,8 @@ describe('聊天图片近视口缩略图', () => {
 
   it('聊天流与记录搜索使用缩略图，大图查看器固定读取原图', () => {
     expect(imageBubbleSource).toContain('v-cached-image="{ transferId, cache: !isSticker }"')
-    expect(chatPaneSource).toContain(
-      'v-cached-image="{ transferId: historyImageTransferId(hit) }"'
+    expect(historySearchSource).toContain(
+      'v-cached-image="{ transferId: imageId(hit) }"'
     )
     expect(imageViewerAppSource).toContain('`pantry-img://${transferId.value}`')
     expect(imageViewerAppSource).not.toContain('pantry-thumb:')

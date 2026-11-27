@@ -883,12 +883,7 @@ export class FilesService extends EventEmitter {
   transferView(transferId: string): TransferView | null {
     const row = this.deps.transferRepo.get(transferId)
     if (!row) return null
-    let blob: FilesBlob = { name: '' }
-    try {
-      blob = JSON.parse(row.files) as FilesBlob
-    } catch {
-      // 留默认
-    }
+    const blob = this.readFilesBlob(row)
     if (blob.purpose === 'update') return null
     const msg = this.deps.msgRepo.get(row.msg_id)
     const inc = this.incoming.get(transferId)
@@ -940,11 +935,12 @@ export class FilesService extends EventEmitter {
    */
   listShareUploads(
     limit = 10
-  ): Array<{ transferId: string; peerId: string; fileCount: number; totalSize: number; ts: number }> {
+  ): Array<{ transferId: string; peerId: string; fileName: string; fileCount: number; totalSize: number; ts: number }> {
     return this.deps.transferRepo
       .listSharePutIncoming(Math.max(1, Math.min(50, limit)))
-      .filter((row) => this.blobPurpose(row) === 'share-put')
-      .map((row) => {
+      .flatMap((row) => {
+        const blob = this.readFilesBlob(row)
+        if (blob.purpose !== 'share-put') return []
         const notice = this.deps.msgRepo.get(`share:${row.transfer_id}:uploaded`)
         let fileCount = 0
         if (notice?.file_ref) {
@@ -957,6 +953,7 @@ export class FilesService extends EventEmitter {
         return {
           transferId: row.transfer_id,
           peerId: row.peer_id,
+          fileName: typeof blob.name === 'string' ? blob.name : '',
           fileCount,
           totalSize: row.total,
           ts: row.ts
@@ -1744,7 +1741,7 @@ export class FilesService extends EventEmitter {
     if (current.status === 'expired' && status !== 'expired') return
     // 提示所需的文件数只在 incoming 上下文里，finish 末尾会清掉，先取出来
     const uploadedCount =
-      status === 'done' && current.direction === 'in' && this.blobPurpose(current) === 'share-put'
+      status === 'done' && current.direction === 'in' && this.readFilesBlob(current).purpose === 'share-put'
         ? (this.incoming.get(transferId)?.plans.filter((p) => !p.isDir).length ?? 0)
         : 0
     // 本机已作废供流上下文的取消终态，不接受迟到 ACK / 数据面回调覆盖（决议 #236）。
@@ -1780,24 +1777,18 @@ export class FilesService extends EventEmitter {
     if (uploadedCount > 0) this.announceShareUpload(transferId, current.peer_id, uploadedCount)
   }
 
-  private blobPurpose(row: { files: string }): FilesBlob['purpose'] {
+  private readFilesBlob(row: { files: string }): FilesBlob {
     try {
-      return (JSON.parse(row.files) as FilesBlob).purpose
+      return (JSON.parse(row.files) as FilesBlob | null) ?? { name: '' }
     } catch {
-      return undefined
+      return { name: '' }
     }
   }
 
   private updateBlob(transferId: string, patch: Partial<FilesBlob>): void {
     const row = this.deps.transferRepo.get(transferId)
     if (!row) return
-    let blob: FilesBlob = { name: '' }
-    try {
-      blob = JSON.parse(row.files) as FilesBlob
-    } catch {
-      // 留默认
-    }
-    const merged = { ...blob, ...patch }
+    const merged = { ...this.readFilesBlob(row), ...patch }
     // files 列复用 insert 的 REPLACE 太重，这里直接 update
     this.deps.transferRepo.updateFiles(transferId, JSON.stringify(merged))
   }

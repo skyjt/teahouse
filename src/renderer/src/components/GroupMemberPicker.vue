@@ -108,11 +108,11 @@ defineExpose({ focusSearch })
         :placeholder="tr('搜索联系人、部门、团队或 IP')"
         :input-props="{ 'aria-label': searchAriaLabel }"
       />
-      <div class="pick-list">
+      <div class="pick-list recipient-list">
         <label
           v-for="{ peer: p, organization } in filteredRows"
           :key="p.nodeId"
-          class="pick"
+          class="pick recipient-option"
           :class="{ disabled: atPickCap && !selectedIds.includes(p.nodeId) }"
         >
           <input
@@ -159,7 +159,6 @@ defineExpose({ focusSearch })
 }
 .pick-list {
   max-height: 274px;
-  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 4px;
@@ -174,15 +173,9 @@ defineExpose({ focusSearch })
   cursor: pointer;
   border-radius: 4px;
 }
-.pick:hover {
-  background: var(--line);
-}
 .pick.disabled {
   opacity: 0.45;
   cursor: default;
-}
-.pick.disabled:hover {
-  background: transparent;
 }
 .dot {
   width: 7px;
@@ -249,6 +242,7 @@ defineExpose({ focusSearch })
   margin-top: 10px;
   max-height: 76px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .count {
   color: var(--text-3);

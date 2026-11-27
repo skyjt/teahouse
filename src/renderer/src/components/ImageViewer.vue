@@ -586,10 +586,10 @@ onBeforeUnmount(() => {
     <footer class="viewer-menu" role="toolbar" :aria-label="tr('图片查看工具')" @click.stop>
       <span class="zoom-readout">{{ broken ? tr('不可用') : loading ? tr('加载中') : zoomLabel }}</span>
       <button class="tool" type="button" :title="tr('缩小')" :disabled="!canUseImage" @click="zoomOut">
-        <PantryIcon name="zoom-out" :size="17" />
+        <PantryIcon name="zoom-out" size="compact" />
       </button>
       <button class="tool" type="button" :title="tr('放大')" :disabled="!canUseImage" @click="zoomIn">
-        <PantryIcon name="zoom-in" :size="17" />
+        <PantryIcon name="zoom-in" size="compact" />
       </button>
       <button
         class="tool"
@@ -600,17 +600,17 @@ onBeforeUnmount(() => {
         :aria-pressed="viewMode === 'fit'"
         @click="applyFit"
       >
-        <PantryIcon name="fit-screen" :size="17" />
+        <PantryIcon name="fit-screen" size="compact" />
       </button>
       <button class="tool" type="button" :title="tr('原始大小')" :disabled="!canUseImage" @click="applyActualSize">
-        <PantryIcon name="actual-size" :size="17" />
+        <PantryIcon name="actual-size" size="compact" />
       </button>
       <span class="tool-divider" aria-hidden="true"></span>
       <button class="tool" type="button" :title="tr('向左旋转')" :disabled="!canUseImage" @click="rotateImage(-90)">
-        <PantryIcon name="rotate-left" :size="17" />
+        <PantryIcon name="rotate-left" size="compact" />
       </button>
       <button class="tool" type="button" :title="tr('向右旋转')" :disabled="!canUseImage" @click="rotateImage(90)">
-        <PantryIcon name="rotate-right" :size="17" />
+        <PantryIcon name="rotate-right" size="compact" />
       </button>
       <span class="tool-divider" aria-hidden="true"></span>
       <button
@@ -623,7 +623,7 @@ onBeforeUnmount(() => {
         :aria-pressed="textLayerVisible"
         @click="onOcrButtonClick"
       >
-        <PantryIcon :name="isOcrBusy ? 'loader' : 'text-select'" :size="17" />
+        <PantryIcon :name="isOcrBusy ? 'loader' : 'text-scan'" size="compact" />
       </button>
       <span v-if="ocrStatus !== 'idle'" class="ocr-readout">{{ ocrLabel }}</span>
       <button
@@ -635,11 +635,11 @@ onBeforeUnmount(() => {
         @click="copyOcr(true)"
       >{{ tr('复制所选') }}</button>
       <button class="tool" type="button" :title="tr('复制全部文字')" :disabled="!canCopyAllOcr" @pointerdown.prevent @click="copyOcr(false)">
-        <PantryIcon name="copy" :size="17" />
+        <PantryIcon name="copy" size="compact" />
       </button>
       <span class="tool-divider" aria-hidden="true"></span>
       <button class="tool" type="button" :title="tr('另存为')" :disabled="saving || !canUseImage" @click="saveAs">
-        <PantryIcon :name="saving ? 'loader' : 'save'" :size="17" />
+        <PantryIcon :name="saving ? 'loader' : 'save'" size="compact" />
       </button>
     </footer>
   </div>
@@ -649,7 +649,7 @@ onBeforeUnmount(() => {
 .viewer {
   position: fixed;
   inset: 0;
-  color: #e6edf6;
+  color: var(--media-ink);
   background: #131b27;
   overflow: hidden;
 }
@@ -662,7 +662,7 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   color: inherit;
-  background: var(--scrim);
+  background: var(--media-toolbar);
   border: 1px solid var(--offline);
   border-radius: var(--radius-pill);
   cursor: pointer;
@@ -671,6 +671,7 @@ onBeforeUnmount(() => {
 .navigate.previous { left: 14px; }
 .navigate.next { right: 14px; }
 .navigate:hover:not(:disabled) { background: var(--primary); }
+.tool:focus-visible { outline: 2px solid var(--media-focus); outline-offset: -2px; }
 .navigate:focus-visible,
 .navigation-error button:focus-visible {
   outline: 2px solid var(--primary);
@@ -686,7 +687,7 @@ onBeforeUnmount(() => {
   left: 50%;
   transform: translateX(-50%);
   padding: 8px 12px;
-  background: var(--scrim);
+  background: var(--media-toolbar);
   border-radius: var(--radius-control);
   font-size: var(--font-sm);
   z-index: 2;
@@ -710,19 +711,20 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   padding: 5px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  border: 1px solid var(--media-edge);
   border-radius: 8px;
-  background: #202a38;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  background: var(--media-toolbar);
+  box-shadow: var(--media-shadow);
 
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   z-index: 2;
 }
 
 .zoom-readout {
   min-width: 50px;
   padding: 0 7px 0 5px;
-  color: rgba(230, 237, 246, 0.82);
+  color: var(--media-muted);
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -730,10 +732,11 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .tool {
-  width: 32px;
-  height: 32px;
+  flex-shrink: 0;
+  width: var(--control-square);
+  height: var(--control-square);
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -741,10 +744,9 @@ onBeforeUnmount(() => {
   background: transparent;
   cursor: pointer;
   transition:
-    background 0.16s ease,
-    color 0.16s ease,
-    border-color 0.16s ease,
-    transform 0.16s ease;
+    background-color var(--motion-feedback) ease,
+    color var(--motion-feedback) ease,
+    border-color var(--motion-feedback) ease;
 }
 .tool:hover:not(:disabled),
 .tool.active {
@@ -753,7 +755,7 @@ onBeforeUnmount(() => {
   background: rgba(93, 143, 208, 0.2);
 }
 .tool:active:not(:disabled) {
-  transform: translateY(1px);
+  background: rgba(93, 143, 208, 0.32);
 }
 .tool:disabled {
   color: rgba(230, 237, 246, 0.28);
@@ -841,7 +843,7 @@ onBeforeUnmount(() => {
   padding: 10px 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  background: #202a38;
+  background: var(--media-toolbar);
   color: rgba(230, 237, 246, 0.76);
   font-size: 13px;
   text-align: center;

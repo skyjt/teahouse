@@ -52,6 +52,10 @@ async function reveal(): Promise<void> {
     <h2 id="diagnostics-heading">{{ tr('诊断与反馈') }}</h2>
     <p>{{ tr('遇到问题时，导出诊断包并附在问题反馈中。') }}</p>
     <p class="diagnostic-detail">{{ tr('仅保存到本机，不会自动上传。包含环境信息与近期运行记录，不含聊天和文件内容。') }}</p>
+    <details class="screen-help">
+      <summary>{{ tr('屏幕协助的使用条件') }}</summary>
+      <p>{{ tr('双方需在线并保持桌面解锁。本机需支持锁屏检测，对方需支持并允许共享屏幕。') }}</p>
+    </details>
     <label class="diagnostic-option">
       <input v-model="includeNetwork" type="checkbox" :disabled="busy" aria-describedby="diagnostic-network-help" />
       <span>{{ tr('附带真实网络地址') }}</span>
@@ -84,6 +88,11 @@ async function reveal(): Promise<void> {
 .diagnostics p { margin: 0 0 8px; font-size: var(--font-sm); line-height: 1.6; color: var(--text-2); }
 .diagnostics p.diagnostic-detail, .diagnostics small { font-size: var(--font-xs); color: var(--text-2); line-height: 1.6; }
 .diagnostics small { display: block; }
+.diagnostics p { max-inline-size: 64ch; overflow-wrap: anywhere; }
+.diagnostics p.diagnostic-detail { font-size: var(--font-sm); line-height: 1.75; margin-bottom: 12px; }
+.screen-help { margin: 10px 0; font-size: var(--font-sm); }
+.screen-help summary { cursor: pointer; }
+.screen-help p { margin: 5px 0; }
 .diagnostic-option { display: flex; align-items: center; gap: 7px; margin-top: 14px; font-size: var(--font-sm); cursor: pointer; }
 :global(html[data-theme='dark']) .diagnostic-option input { color-scheme: dark; }
 .diagnostic-option input { margin: 0; accent-color: var(--primary); }

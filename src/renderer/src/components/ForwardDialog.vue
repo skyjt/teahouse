@@ -106,8 +106,8 @@ onBeforeUnmount(() => {
           :aria-label="tr('搜索转发目标')"
           :placeholder="allowGroup ? tr('搜索昵称、备注或讨论组') : tr('搜索昵称或备注')"
         />
-        <div class="pick-list">
-          <label v-for="p in forwardPeers" :key="p.nodeId" class="pick">
+        <div class="pick-list recipient-list">
+          <label v-for="p in forwardPeers" :key="p.nodeId" class="pick recipient-option">
             <input
               type="checkbox"
               :checked="picked.has(`single:${p.nodeId}`)"
@@ -117,7 +117,7 @@ onBeforeUnmount(() => {
             <span class="nm">{{ p.remark || p.nick }}</span>
             <em v-if="!p.online" class="off-tag">{{ tr('离线') }}</em>
           </label>
-          <label v-for="g in forwardGroups" :key="g.groupId" class="pick">
+          <label v-for="g in forwardGroups" :key="g.groupId" class="pick recipient-option">
             <input
               type="checkbox"
               :checked="picked.has(`group:${g.groupId}`)"
@@ -150,11 +150,11 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   padding: 24px;
-  background: rgba(22, 34, 52, 0.32);
+  background: var(--scrim);
   display: grid;
   place-items: center;
   z-index: 1200;
-  animation: forward-mask-in 140ms ease-out;
+  animation: forward-mask-in var(--motion-feedback) ease-out;
 }
 .dialog {
   display: flex;
@@ -168,7 +168,7 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-panel);
   padding: 18px 20px;
   box-shadow: var(--highlight-edge), var(--shadow-float);
-  animation: forward-dialog-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: forward-dialog-in var(--motion-enter) var(--ease-out);
 }
 .dialog:focus {
   outline: none;
@@ -215,7 +215,6 @@ h3 {
 .pick-list {
   min-height: 0;
   max-height: 240px;
-  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   padding: 4px;
@@ -228,9 +227,6 @@ h3 {
   font-size: 13px;
   cursor: pointer;
   border-radius: 8px;
-}
-.pick:hover {
-  background: var(--surface-hover);
 }
 .dot {
   width: 7px;
@@ -315,7 +311,7 @@ h3 {
 @keyframes forward-dialog-in {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.985);
+    transform: translateY(4px);
   }
 }
 @media (prefers-reduced-motion: reduce) {

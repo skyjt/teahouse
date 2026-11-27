@@ -51,7 +51,7 @@ describe('设置二选一偏好滑块', () => {
     expect(settingsSource).not.toContain('setShareRoot')
     expect(settingsSource).not.toContain('setShareMode')
     expect(settingsSource).not.toContain('setShareGrant')
-    expect(settingsSource).toContain('打开文件柜')
+    expect(settingsSource).toContain('管理共享')
     expect(settingsSource).toContain('window.pantry.openCabinet()')
   })
 

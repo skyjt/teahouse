@@ -17,14 +17,15 @@ import { useShareBrowser } from '../utils/share-browser'
 // 只做展示与请求编排，权限判定全部在对方本机（protocol §8.2）。
 
 export type CabinetTarget = { kind: 'mine' } | { kind: 'peer'; peerId: string }
+export type MinePage = 'files' | 'access' | 'received'
 export type CabinetViewMode = 'list' | 'grid'
 
 const VIEW_MODE_KEY = 'pantry.cabinet.viewMode'
 
 export const SHARE_MODE_OPTIONS = computed<Array<{ label: string; value: ShareMode }>>(() => ([
-  { label: tr('不共享'), value: 'off' },
-  { label: tr('只读'), value: 'read' },
-  { label: tr('可读可传'), value: 'write' }
+  { label: tr('不可访问'), value: 'off' },
+  { label: tr('可下载'), value: 'read' },
+  { label: tr('可下载和上传'), value: 'write' }
 ]))
 
 export function cabinetPeerName(p: PeerView): string {
@@ -38,6 +39,7 @@ export const useCabinetStore = defineStore('cabinet', () => {
   const recentUploads = ref<ShareRecentUploadView[]>([])
   const shareRootError = ref('')
   const target = ref<CabinetTarget>({ kind: 'mine' })
+  const minePage = ref<MinePage>('files')
   const viewMode = ref<CabinetViewMode>('list')
   const toast = ref('')
   let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -45,14 +47,12 @@ export const useCabinetStore = defineStore('cabinet', () => {
 
   const shareRoot = computed(() => settings.value?.fileCabinet.root ?? '')
   const shareMode = computed((): ShareMode => settings.value?.fileCabinet.mode ?? 'off')
-  const selfName = computed(() => settings.value?.nick.trim() || tr('你的名字'))
-  const shareModeHint = computed((): string => {
-    if (!shareRoot.value) return tr('先选择共享目录，权限才会生效。')
-    if (shareMode.value === 'write') {
-      return tr('同事可以浏览、下载，也能往你的文件柜放新文件；他们不能删除、改名或覆盖你已有的文件。')
-    }
-    if (shareMode.value === 'read') return tr('同事可以浏览和下载，不能往里放东西。')
-    return tr('默认谁都看不到；可以在下面单独给某位同事开放。')
+  const shareAudience = computed(() => {
+    if (!shareRoot.value) return tr('尚未选择文件夹')
+    const exceptions = grants.value.filter((g) => g.mode !== shareMode.value)
+    if (shareMode.value === 'off') return exceptions.length ? tr('已向 {0} 位同事开放', { 0: exceptions.length }) : tr('仅自己可见')
+    if (exceptions.length) return shareMode.value === 'write' ? tr('默认可下载和上传，部分同事另有权限') : tr('默认可下载，部分同事另有权限')
+    return shareMode.value === 'write' ? tr('所有同事可下载和上传') : tr('所有同事可下载')
   })
   const cabinetPeers = computed((): PeerView[] => {
     return usePeersStore()
@@ -81,9 +81,10 @@ export const useCabinetStore = defineStore('cabinet', () => {
     if (initialized.value) return
     initialized.value = true
     await usePeersStore().init()
-    settings.value = await window.pantry.getSettings()
+    let pendingSettings: SettingsView | undefined
     window.pantry.onSettingsUpdated((view) => {
-      settings.value = view
+      if (settings.value) settings.value = view
+      else pendingSettings = view
     })
     try {
       const saved = localStorage.getItem(VIEW_MODE_KEY)
@@ -101,7 +102,9 @@ export const useCabinetStore = defineStore('cabinet', () => {
       }
       browser.updateTransfer(view)
     })
-    await Promise.all([loadGrants(), loadRecentUploads()])
+    // 首次展示访问范围时，个人权限与默认权限必须都已就绪。
+    const [initialSettings] = await Promise.all([window.pantry.getSettings(), loadGrants(), loadRecentUploads()])
+    settings.value = pendingSettings ?? initialSettings
   }
 
   function flashToast(text: string): void {
@@ -110,7 +113,8 @@ export const useCabinetStore = defineStore('cabinet', () => {
     toastTimer = setTimeout(() => (toast.value = ''), 1800)
   }
 
-  function selectMine(): void {
+  function selectMine(page: MinePage = 'files'): void {
+    minePage.value = page
     target.value = { kind: 'mine' }
     browser.resetBrowse()
     void loadRecentUploads()
@@ -145,6 +149,7 @@ export const useCabinetStore = defineStore('cabinet', () => {
   }
 
   async function pickShareRoot(): Promise<void> {
+    const firstFolder = !shareRoot.value
     shareRootError.value = ''
     const result = await window.pantry.setShareRoot()
     if (!result.ok) {
@@ -153,6 +158,7 @@ export const useCabinetStore = defineStore('cabinet', () => {
     }
     if (result.canceled) return
     settings.value = result.view
+    if (firstFolder) minePage.value = 'access'
     flashToast(tr('共享目录已设置'))
   }
 
@@ -161,24 +167,19 @@ export const useCabinetStore = defineStore('cabinet', () => {
     const result = await window.pantry.setShareRoot(true)
     if (result.ok && !result.canceled) {
       settings.value = result.view
+      minePage.value = 'files'
       flashToast(tr('已停止共享'))
     }
   }
 
-  function revealShareRoot(): void {
-    void window.pantry.revealShareRoot()
+  async function revealShareRoot(path = ''): Promise<void> {
+    if (!await window.pantry.revealShareRoot(path)) flashToast(tr('无法打开这个位置，请刷新文件列表。'))
   }
 
   async function changeShareMode(mode: ShareMode): Promise<void> {
     if (mode === shareMode.value) return
     settings.value = await window.pantry.setShareMode(mode)
     flashToast(tr('设置已保存'))
-  }
-
-  async function addGrant(nodeId: string): Promise<void> {
-    // 新例外先给只读权限，允许上传须由用户明确设置。
-    grants.value = await window.pantry.setShareGrant(nodeId, 'read')
-    flashToast(tr('已添加例外'))
   }
 
   async function changeGrant(nodeId: string, mode: ShareMode): Promise<void> {
@@ -194,9 +195,9 @@ export const useCabinetStore = defineStore('cabinet', () => {
   return {
     ...browser,
     initialized, settings, grants, recentUploads, shareRootError, target,
-    viewMode, toast, shareRoot, shareMode, selfName, shareModeHint,
+    minePage, viewMode, toast, shareRoot, shareMode, shareAudience,
     cabinetPeers, grantCandidates, activePeer, init, flashToast, selectMine,
     selectPeer, revealUpload, setViewMode, loadGrants, loadRecentUploads, pickShareRoot,
-    clearShareRoot, revealShareRoot, changeShareMode, addGrant, changeGrant, removeGrant
+    clearShareRoot, revealShareRoot, changeShareMode, changeGrant, removeGrant
   }
 })

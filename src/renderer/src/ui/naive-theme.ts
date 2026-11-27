@@ -29,7 +29,7 @@ const componentOverrides: GlobalThemeOverrides = {
     fontSizeMedium: '13px'
   },
   Select: {
-    menuBoxShadow: '0 4px 18px rgba(29, 45, 68, 0.12)',
+    menuBoxShadow: 'var(--shadow-float)',
     peers: {
       InternalSelection: {
         textColor: 'var(--text-1)',
@@ -58,9 +58,9 @@ export const teahouseLightThemeOverrides: GlobalThemeOverrides = {
     infoColorSuppl: '#4e79af',
     textColorBase: '#293241',
     textColor1: '#293241',
-    textColor2: '#657387',
-    textColor3: '#7d8795',
-    placeholderColor: '#8b95a3',
+    textColor2: '#546479',
+    textColor3: '#637185',
+    placeholderColor: '#687586',
     borderColor: '#d5deea',
     dividerColor: '#e5e9f0',
     bodyColor: '#ffffff',

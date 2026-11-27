@@ -8,49 +8,36 @@ import type {
   SearchResult
 } from '../../shared/ipc'
 import type { PeerRegistry } from '../net/peer-registry'
+import { searchTerms } from '../../shared/search-terms'
 import { toFtsQuery } from '../store/fts'
 import { parsePkRef, pkPreview } from '../../shared/pk'
 import { messagePreview } from '../store/msg-repo'
 
-// 全局搜索（F-MSG-5 / ui-design §6）：联系人（全量含离线）/ 聊天记录（按会话聚合）/ 文件。
-// 中文按字短语匹配走 FTS5；联系人与文件名走 LIKE（千级数据量足够）。
+// 旧附件有时只把文件名写进正文，新附件也可能只写进 file_ref.name。
+const fileNameSql = `COALESCE(
+  NULLIF(CASE WHEN json_valid(file_ref) THEN
+    CASE WHEN json_type(file_ref, '$.name') = 'text' THEN json_extract(file_ref, '$.name') END
+  END, ''),
+  CASE WHEN substr(content, 1, 4) IN ('[文件]', '[图片]') THEN ltrim(substr(content, 5)) ELSE content END
+)`
+const visibleTextSql = `CASE WHEN kind IN ('file', 'image') THEN ${fileNameSql} ELSE content END`
+type Params = Record<string, string | number>
+
+function matchTerms(column: string, terms: string[], params: Params): string {
+  return terms.map((term, i) => {
+    params['term' + i] = `%${escapeLike(term)}%`
+    return `${column} LIKE @term${i} ESCAPE '\\'`
+  }).join(' AND ')
+}
 
 export class SearchService {
-  private readonly msgGroupStmt: DatabaseT.Statement
-  private readonly msgLatestStmt: DatabaseT.Statement
-  private readonly msgLatestFallbackStmt: DatabaseT.Statement
-  private readonly fileStmt: DatabaseT.Statement
-  private readonly conversationStmtCache = new Map<string, DatabaseT.Statement>()
+  private readonly statementCache = new Map<string, DatabaseT.Statement>()
 
   constructor(
     private readonly db: DatabaseT.Database,
     private readonly registry: PeerRegistry,
     private readonly remarkOf: (nodeId: string) => string = () => ''
-  ) {
-    this.msgGroupStmt = db.prepare(`
-      SELECT m.conv_id AS convId, SUM(m.kind IN ('text', 'pk')) AS n, MAX(m.seq) AS latestSeq
-      FROM messages_fts f JOIN messages m ON m.id = f.msg_id
-      WHERE messages_fts MATCH ?
-      GROUP BY m.conv_id HAVING n > 0
-      ORDER BY MAX(CASE WHEN m.kind IN ('text', 'pk') THEN m.ts END) DESC LIMIT 10
-    `)
-    this.msgLatestStmt = db.prepare(`
-      SELECT id, kind, content, file_ref, ts, seq FROM messages WHERE conv_id = ? AND seq = ? LIMIT 2
-    `)
-    // 旧库 seq 无唯一约束；异常同序号保留原 MATCH 的选择方式。
-    this.msgLatestFallbackStmt = db.prepare(`
-      SELECT m.id, m.kind, m.content, m.file_ref, m.ts, m.seq
-      FROM messages_fts f JOIN messages m ON m.id = f.msg_id
-      WHERE messages_fts MATCH ? AND m.conv_id = ?
-      ORDER BY m.seq DESC LIMIT 1
-    `)
-    this.fileStmt = db.prepare(`
-      SELECT id, conv_id AS convId, content, ts, seq
-      FROM messages
-      WHERE kind IN ('file', 'image') AND content LIKE ? ESCAPE '\\'
-      ORDER BY ts DESC LIMIT 20
-    `)
-  }
+  ) {}
 
   query(raw: string): SearchResult {
     const q = raw.trim()
@@ -86,63 +73,72 @@ export class SearchService {
         caps: Array.isArray(r.profile.caps) ? r.profile.caps : []
       }))
 
-    // 聊天记录：FTS 短语匹配，按会话聚合 + 各会话最新命中作摘要
-    const messageGroups: MessageGroupHit[] = []
-    const ftsQuery = toFtsQuery(q)
-    if (ftsQuery) {
-      const groups = this.msgGroupStmt.all(ftsQuery) as Array<{
-        convId: string
-        n: number
-        latestSeq: number
-      }>
-      for (const g of groups) {
-        type Latest = { id: string; kind: string; content: string; file_ref: string | null; ts: number; seq: number }
-        const indexed = this.msgLatestStmt.all(g.convId, g.latestSeq) as Latest[]
-        const latest = indexed.length === 1
-          ? indexed[0]
-          : this.msgLatestFallbackStmt.get(ftsQuery, g.convId) as Latest | undefined
-        messageGroups.push({
-          convId: g.convId,
-          peerId: g.convId.startsWith('single:') ? g.convId.slice(7) : g.convId,
-          count: g.n,
-          snippet: latest?.content ?? '',
-          ...(latest?.kind === 'pk' ? { previewMessage: messagePreview(latest) } : {}),
-          latestSeq: latest?.seq ?? g.latestSeq,
-          latestMsgId: latest?.id ?? '',
-          ts: latest?.ts ?? 0
-        })
+    const terms = searchTerms(q)
+    const params: Params = {}
+    const messageMatch = matchTerms('content', terms, params)
+    // 连续汉字短语走 FTS 缩小候选范围，仍以可见原文核对标点和其他关键词。
+    const fts = terms.filter(term => /^[㐀-䶿一-鿿豈-﫿]+$/u.test(term)).map(toFtsQuery).join(' AND ')
+    const groups = this.statement(`
+      SELECT conv_id AS convId, COUNT(*) AS n, MAX(ts) AS latestTs
+      FROM messages m ${fts ? 'JOIN messages_fts f ON m.id = f.msg_id' : ''}
+      WHERE ${fts ? 'messages_fts MATCH @fts AND' : ''} kind IN ('text', 'pk')
+        AND status <> 'recalled' AND ${messageMatch}
+      GROUP BY conv_id ORDER BY latestTs DESC, conv_id LIMIT 10
+    `).all(fts ? { ...params, fts } : params) as Array<{ convId: string; n: number; latestTs: number }>
+    const latest = this.statement(`
+      SELECT id, kind, content, file_ref, ts, seq FROM messages
+      WHERE conv_id = @convId AND ts = @latestTs AND kind IN ('text', 'pk')
+        AND status <> 'recalled' AND ${messageMatch}
+      ORDER BY seq DESC, id DESC LIMIT 1
+    `)
+    const messageGroups: MessageGroupHit[] = groups.map(({ convId, n, latestTs }) => {
+      const row = latest.get({ ...params, convId, latestTs }) as {
+        id: string; kind: string; content: string; file_ref: string | null; ts: number; seq: number
       }
-    }
+      return {
+        convId,
+        peerId: convId.startsWith('single:') ? convId.slice(7) : convId,
+        count: n,
+        snippet: excerpt(row.content, terms),
+        ...(row.kind === 'pk' ? { previewMessage: messagePreview(row) } : {}),
+        latestSeq: row.seq,
+        latestMsgId: row.id,
+        ts: row.ts
+      }
+    })
 
-    // 文件/图片：按展示名模糊匹配（content 形如 "[文件] 名字"）
-    const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`)
-    const files = (
-      this.fileStmt.all(`%${escaped}%`) as Array<{
-        id: string
-        convId: string
-        content: string
-        ts: number
-        seq: number
-      }>
-    ).map(
-      (row): FileHit => ({
-        msgId: row.id,
-        convId: row.convId,
-        peerId: row.convId.startsWith('single:') ? row.convId.slice(7) : row.convId,
-        name: row.content.replace(/^\[(文件|图片)\] ?/, ''),
-        ts: row.ts,
-        seq: row.seq
-      })
-    )
+    const fileMatch = matchTerms(fileNameSql, terms, params)
+    const files = (this.statement(`
+      SELECT id, conv_id AS convId, ${fileNameSql} AS name, ts, seq
+      FROM messages WHERE kind IN ('file', 'image') AND status <> 'recalled' AND ${fileMatch}
+      ORDER BY ts DESC, seq DESC, id DESC LIMIT 20
+    `).all(params) as Array<{
+      id: string; convId: string; name: string; ts: number; seq: number
+    }>).map((row): FileHit => ({
+      msgId: row.id,
+      convId: row.convId,
+      peerId: row.convId.startsWith('single:') ? row.convId.slice(7) : row.convId,
+      name: row.name,
+      ts: row.ts,
+      seq: row.seq
+    }))
 
     return { peers, messageGroups, files }
   }
 
+  senders(convId: string | null): string[] {
+    const filter = convId === null ? '' : 'AND conv_id = @convId'
+    return this.statement(`
+      SELECT DISTINCT sender_id FROM messages WHERE is_mine = 0 AND status <> 'recalled'
+        AND kind IN ('text', 'pk', 'file', 'image') ${filter}
+    `).pluck().all(convId === null ? {} : { convId }) as string[]
+  }
+
   conversation(options: ConversationSearchOptions): ConversationMessageHit[] {
-    const convId = options.convId.trim()
-    const query = options.query.trim()
+    const convId = options.convId?.trim()
+    const terms = searchTerms(options.query)
     const kind =
-      options.kind === 'image' || options.kind === 'file' || options.kind === 'all'
+      options.kind === 'image' || options.kind === 'file' || options.kind === 'message'
         ? options.kind
         : 'all'
     const limit =
@@ -157,15 +153,31 @@ export class SearchService {
       typeof options.toTs === 'number' && Number.isFinite(options.toTs)
         ? Math.max(0, Math.floor(options.toTs))
         : undefined
-    if (!convId || convId.length > 128) return []
+    if (options.convId !== null && (!convId || convId.length > 128)) return []
     if (fromTs !== undefined && toTs !== undefined && fromTs > toTs) return []
 
-    const clauses = ["conv_id = @convId", "status <> 'recalled'"]
+    const clauses = ["status <> 'recalled'"]
     if (kind === 'image') clauses.push("kind = 'image'")
     else if (kind === 'file') clauses.push("kind = 'file'")
+    else if (kind === 'message') clauses.push("kind IN ('text', 'pk')")
     else clauses.push("kind IN ('text', 'image', 'file', 'pk')")
 
-    const params: Record<string, string | number> = { convId, limit }
+    const params: Record<string, string | number> = { limit }
+    if (convId) {
+      clauses.push('conv_id = @convId')
+      params.convId = convId
+    }
+    if (options.fromMe) clauses.push('is_mine = 1')
+    else if (options.senderId) {
+      clauses.push('sender_id = @senderId')
+      params.senderId = options.senderId
+    }
+    if (options.before) {
+      clauses.push('(ts, seq, id) < (@beforeTs, @beforeSeq, @beforeId)')
+      params.beforeTs = options.before.ts
+      params.beforeSeq = options.before.seq
+      params.beforeId = options.before.msgId
+    }
     if (fromTs !== undefined) {
       clauses.push('ts >= @fromTs')
       params.fromTs = fromTs
@@ -174,22 +186,17 @@ export class SearchService {
       clauses.push('ts <= @toTs')
       params.toTs = toTs
     }
-    if (query) {
-      params.like = `%${escapeLike(query)}%`
-      clauses.push(
-        "(content LIKE @like ESCAPE '\\' OR (kind IN ('image', 'file') AND COALESCE(file_ref, '') LIKE @like ESCAPE '\\'))"
-      )
-    }
+    if (terms.length) clauses.push(matchTerms(visibleTextSql, terms, params))
 
     const sql = `
       SELECT id, conv_id AS convId, sender_id AS senderId, is_mine AS isMine,
              kind, content, file_ref AS fileRef, ts, seq
       FROM messages
       WHERE ${clauses.join(' AND ')}
-      ORDER BY ts DESC, seq DESC
+      ORDER BY ts DESC, seq DESC, id DESC
       LIMIT @limit
     `
-    const stmt = this.prepareConversationStatement(sql)
+    const stmt = this.statement(sql)
     const rows = stmt.all(params) as Array<{
       id: string
       convId: string
@@ -211,7 +218,7 @@ export class SearchService {
         isMine: row.isMine !== 0,
         kind: row.kind,
         title,
-        snippet: snippetOf(row.kind, row.content, title),
+        snippet: excerpt(row.kind === 'text' ? row.content : title, terms),
         ts: row.ts,
         seq: row.seq
       }
@@ -220,11 +227,15 @@ export class SearchService {
     })
   }
 
-  private prepareConversationStatement(sql: string): DatabaseT.Statement {
-    const cached = this.conversationStmtCache.get(sql)
+  private statement(sql: string): DatabaseT.Statement {
+    const cached = this.statementCache.get(sql)
     if (cached) return cached
     const stmt = this.db.prepare(sql)
-    this.conversationStmtCache.set(sql, stmt)
+    if (this.statementCache.size >= 64) {
+      const oldest = this.statementCache.keys().next()
+      if (!oldest.done) this.statementCache.delete(oldest.value)
+    }
+    this.statementCache.set(sql, stmt)
     return stmt
   }
 }
@@ -244,11 +255,13 @@ function titleOf(kind: 'text' | 'file' | 'image' | 'pk', content: string, fileRe
   return content.replace(/^\[(文件|图片)\] ?/, '') || (kind === 'image' ? '图片' : '文件')
 }
 
-function snippetOf(kind: 'text' | 'file' | 'image' | 'pk', content: string, title: string): string {
-  if (kind === 'text') return content
-  if (kind === 'pk') return title
-  const stripped = content.replace(/^\[(文件|图片)\] ?/, '')
-  return stripped || title
+function excerpt(text: string, terms: string[]): string {
+  const lower = text.toLowerCase()
+  const positions = terms.map(term => lower.indexOf(term.toLowerCase())).filter(at => at >= 0)
+  const first = positions.length ? Math.min(...positions) : 0
+  const start = first <= 20 || text.length <= 36 ? 0 : first - 12
+  const end = start + Math.max(96, ...terms.map(term => term.length + 24))
+  return (start ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '')
 }
 
 function nameFromFileRef(fileRef: string | null): string {

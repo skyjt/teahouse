@@ -1,23 +1,26 @@
 <script setup lang="ts">
 import { tr, language } from './utils/i18n'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { darkTheme, dateZhCN, dateEnUS, enUS, NButton, NConfigProvider, NInput, zhCN } from 'naive-ui'
 import type {
   AppInfo,
   CaptureFailureNotice,
+  ConversationSearchKind,
   ScanProgressView,
   SettingsView
 } from '../../shared/ipc'
 import { usePeersStore } from './stores/peers'
 import { useChatStore } from './stores/chat'
 import { useUpdateStore } from './stores/update'
+import GroupCreator from './components/GroupCreator.vue'
 import PeerList from './components/PeerList.vue'
 import ConvList from './components/ConvList.vue'
 import ChatPane from './components/ChatPane.vue'
 import SetupWizard from './components/SetupWizard.vue'
 import SearchPanel from './components/SearchPanel.vue'
+import HistorySearch from './components/HistorySearch.vue'
+import { isImeCompositionKey } from './utils/ime'
 import ProfileCard from './components/ProfileCard.vue'
-import GroupCreator from './components/GroupCreator.vue'
 // 群发功能已停用（决议 #62）：建讨论组即可满足同样诉求，群发无实际意义；保留代码留痕。
 // import MassSender from './components/MassSender.vue'
 import PantryIcon from './components/PantryIcon.vue'
@@ -39,10 +42,67 @@ import {
   teahouseLightThemeOverrides
 } from './ui/naive-theme'
 
+const ContactDiscovery = defineAsyncComponent(() => import('./components/ContactDiscovery.vue'))
+
 type Tab = 'chat' | 'contacts' | 'cabinet'
 
 const tab = ref<Tab>('chat')
 const searchQuery = ref('')
+type FindRequest = { convId: string | null; query: string; kind: ConversationSearchKind }
+const history = ref<(FindRequest & { originConvId: string | null }) | null>(null)
+const historyPane = ref<InstanceType<typeof HistorySearch> | null>(null)
+const chatPane = ref<InstanceType<typeof ChatPane> | null>(null)
+const globalInput = ref<InstanceType<typeof NInput> | null>(null)
+const globalFocused = ref(false)
+let returnToGlobal = false
+
+function openHistory(request: FindRequest, global = true): void {
+  returnToGlobal = global
+  history.value = { ...request, originConvId: chatPane.value ? chatStore.activeConvId : null }
+  chatPane.value?.revealMessages()
+}
+function findEverywhere(): void {
+  openHistory({ convId: null, query: searchQuery.value.trim(), kind: 'all' })
+}
+function onGlobalEnter(event: KeyboardEvent): void {
+  if (isImeCompositionKey(event, composing) || event.defaultPrevented ||
+      event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  findEverywhere()
+}
+function findInChat(): void {
+  if (history.value) {
+    historyPane.value?.findInConversation(chatPane.value ? chatStore.activeConvId : history.value.convId)
+    return
+  }
+  openHistory({ convId: chatPane.value ? chatStore.activeConvId : null, query: chatPane.value ? '' : searchQuery.value.trim(), kind: 'all' }, !chatPane.value)
+}
+function closeHistory(): void {
+  history.value = null
+  void nextTick(() => {
+    if (returnToGlobal || !chatPane.value) globalInput.value?.focus()
+    else chatPane.value.focusFind()
+  })
+}
+function onGlobalBlur(): void {
+  void nextTick(() => {
+    globalFocused.value = !!document.activeElement?.closest('.search-box, .history-shortcut')
+  })
+}
+function showLocatedChat(): void {
+  tab.value = 'chat'
+  selectedPeerId.value = null
+  chatPane.value?.revealMessages()
+}
+
+const contactsList = ref<InstanceType<typeof PeerList> | null>(null)
+async function findColleague(): Promise<void> {
+  selectedPeerId.value = null
+  tab.value = 'contacts'
+  await nextTick()
+  contactsList.value?.focusHeading()
+}
+
 const selectedPeerId = ref<string | null>(null)
 const showGroupCreator = ref(false)
 // const showMassSender = ref(false) // 群发已停用（决议 #62）
@@ -51,8 +111,11 @@ const cabinetStore = useCabinetStore()
 
 /** 设置窗「打开文件柜」与私聊面板「在文件柜里打开」都走这里（决议 #284） */
 function showCabinet(peerId: string): void {
+  history.value = null
+  globalFocused.value = false
   tab.value = 'cabinet'
   if (peerId) cabinetStore.selectPeer(peerId)
+  else cabinetStore.selectMine('access')
 }
 
 const selectedPeer = computed<PeerView | null>(() =>
@@ -63,10 +126,17 @@ function onSelectPeer(peer: PeerView): void {
   selectedPeerId.value = peer.nodeId
 }
 
+function showChat(): void {
+  history.value = null
+  globalFocused.value = false
+  selectedPeerId.value = null
+  searchQuery.value = ''
+  tab.value = 'chat'
+}
+
 async function chatWith(nodeId: string): Promise<void> {
   await chatStore.openPeer(nodeId)
-  selectedPeerId.value = null
-  tab.value = 'chat'
+  showChat()
 }
 
 function openSettings(event?: Event): void {
@@ -77,6 +147,8 @@ function openSettings(event?: Event): void {
 // 文件柜（决议 #283，形态改为主窗页签见 #284）：底部工具组最上一格，切到文件柜页签；
 // 未设共享目录也可点——进去就是引导设置的空态
 function openCabinet(event?: Event): void {
+  history.value = null
+  globalFocused.value = false
   hideRailHint()
   releaseRailFocus(event)
   tab.value = 'cabinet'
@@ -214,8 +286,22 @@ function applyWindowTitle(next: SettingsView | null): void {
   document.title = nick ? `${nick}-🍵Teahouse` : tr('茶话间')
 }
 
+const showContactDiscovery = computed(() =>
+  tab.value === 'contacts' && !peersStore.peers.length && !history.value && !searchQuery.value.trim()
+)
+const displayedConversation = computed(() =>
+  tab.value === 'cabinet' || showContactDiscovery.value || (tab.value === 'contacts' && selectedPeer.value) ||
+  showWizard.value || settingsWindowOpen.value || showGroupCreator.value || showScanConfirm.value
+    ? null : chatStore.activeConv?.id ?? null
+)
+watch(displayedConversation, (id) => {
+  chatStore.visibleConvId = id
+  chatStore.readVisibleConversation()
+}, { immediate: true, flush: 'post' })
+
 function onVisibilityChange(): void {
   if (document.visibilityState === 'hidden') chatStore.forgetConversationScrolls()
+  else chatStore.readVisibleConversation()
 }
 
 function clearScanProgressHideTimer(): void {
@@ -305,6 +391,8 @@ function applyScanProgress(next: ScanProgressView): void {
 }
 
 function activateTab(next: Tab, event: Event): void {
+  history.value = null
+  globalFocused.value = false
   tab.value = next
   hideRailHint()
   releaseRailFocus(event)
@@ -337,7 +425,16 @@ function onCompositionStart(): void { composing = true }
 function onCompositionEnd(): void { composing = false }
 
 function onMainKeydown(event: KeyboardEvent): void {
-  if (!isPlainEscape(event, composing) || showWizard.value || settingsWindowOpen.value) return
+  if (showWizard.value || settingsWindowOpen.value || isImeCompositionKey(event, composing)) return
+  const find = (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'f'
+  if (find && tab.value !== 'cabinet' && !event.defaultPrevented) {
+    if (showGroupCreator.value || document.querySelector('[aria-modal="true"], [role="menu"]')) return
+    event.preventDefault()
+    if (history.value && event.target instanceof Element && event.target.closest('.history')) historyPane.value?.focusQuery()
+    else findInChat()
+    return
+  }
+  if (!isPlainEscape(event, composing)) return
   if (showScanConfirm.value) {
     event.preventDefault()
     cancelScanConfirm()
@@ -349,7 +446,10 @@ function onMainKeydown(event: KeyboardEvent): void {
   )].some((element) => element.getClientRects().length > 0)
   if (showGroupCreator.value || hasPopup) return
   event.preventDefault()
-  if (showUpdatePanel.value) showUpdatePanel.value = false
+  if (history.value) closeHistory()
+  else if (searchQuery.value && event.target instanceof Element && event.target.closest('.search-box')) searchQuery.value = ''
+  else if (globalFocused.value) { globalFocused.value = false; globalInput.value?.blur() }
+  else if (showUpdatePanel.value) showUpdatePanel.value = false
   else void window.pantry.hideMainWindow()
 }
 
@@ -366,7 +466,7 @@ onMounted(async () => {
   })
   stopCabinetOpen = window.pantry.onCabinetFocusPeer((peerId) => showCabinet(peerId))
   void peersStore.init()
-  void chatStore.init()
+  void chatStore.init(showChat)
   void groupsStore.init()
   void updateStore.init()
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -472,6 +572,7 @@ onUnmounted(() => {
       <button
         type="button"
         class="rail-btn rail-hint"
+        :aria-current="tab === 'chat' ? 'page' : undefined"
         :class="{ active: tab === 'chat', 'show-hint': activeRailHint === 'chat' }"
         :data-label="tr('聊天')"
         :aria-label="tr('聊天')"
@@ -487,6 +588,7 @@ onUnmounted(() => {
       <button
         type="button"
         class="rail-btn rail-hint"
+        :aria-current="tab === 'contacts' ? 'page' : undefined"
         :class="{ active: tab === 'contacts', 'show-hint': activeRailHint === 'contacts' }"
         :data-label="tr('通讯录')"
         :aria-label="tr('通讯录')"
@@ -520,6 +622,7 @@ onUnmounted(() => {
       <button
         type="button"
         class="rail-btn rail-hint"
+        :aria-current="tab === 'cabinet' ? 'page' : undefined"
         :class="{ active: tab === 'cabinet', 'show-hint': activeRailHint === 'cabinet' }"
         :data-label="tr('文件柜')"
         :aria-label="tr('文件柜')"
@@ -595,17 +698,24 @@ onUnmounted(() => {
       </NButton>
     </div>
 
-    <aside class="list">
+    <aside class="list" :class="{ finding: history }">
+      <HistorySearch v-if="history" ref="historyPane" v-bind="history" @close="closeHistory" @located="showLocatedChat" />
+      <div v-show="!history" class="list-home">
       <div v-if="tab !== 'cabinet'" class="search-box">
         <NInput
+          ref="globalInput"
           v-model:value="searchQuery"
+          :maxlength="128"
+          @keydown.enter="onGlobalEnter"
+          @focus="globalFocused = true"
+          @blur="onGlobalBlur"
           class="search"
           size="small"
           clearable
           :aria-label="tr('搜索联系人、讨论组和聊天记录')"
           :placeholder="tr('搜索')"
         >
-          <template #prefix><PantryIcon name="search" :size="20" /></template>
+          <template #prefix><PantryIcon name="search" size="compact" /></template>
         </NInput>
         <!-- 群发入口已停用（决议 #62）：直接建讨论组即可，群发无意义；保留留痕
         <button class="new-group" title="群发消息" @click="showMassSender = true">
@@ -622,20 +732,29 @@ onUnmounted(() => {
           <PantryIcon name="plus" :size="22" />
         </NButton>
       </div>
-      <GroupCreator v-if="showGroupCreator" @close="showGroupCreator = false" />
+      <button v-if="tab !== 'cabinet' && (globalFocused || searchQuery.trim())" type="button" class="history-shortcut"
+        @focus="globalFocused = true" @blur="onGlobalBlur" @mousedown.prevent
+        @click="findEverywhere">
+        <PantryIcon name="search" :size="16" /><span>{{ tr('在全部聊天中查找') }}</span><PantryIcon name="chevron-right" :size="14" />
+      </button>
+      <GroupCreator v-if="showGroupCreator" @created="showChat" @close="showGroupCreator = false" />
       <!-- <MassSender v-if="showMassSender" @close="showMassSender = false" /> 群发已停用（决议 #62） -->
       <SearchPanel
         v-if="searchQuery.trim() && tab !== 'cabinet'"
         :query="searchQuery.trim()"
-        @navigate="((searchQuery = ''), (tab = 'chat'))"
+        @navigate="showChat"
+        @history="openHistory"
+        @located="showLocatedChat"
       />
       <CabinetList v-else-if="tab === 'cabinet'" />
       <ConvList v-else-if="tab === 'chat'" />
-      <PeerList v-else @select="onSelectPeer" @chat="chatWith" />
+      <PeerList v-else ref="contactsList" @select="onSelectPeer" @chat="chatWith" />
+      </div>
     </aside>
 
     <main class="content">
-      <CabinetPane v-if="tab === 'cabinet'" />
+      <CabinetPane v-if="tab === 'cabinet'" @chat="chatWith" />
+      <ContactDiscovery v-else-if="showContactDiscovery" :local-ip="info?.localIp" />
       <ProfileCard
         v-else-if="tab === 'contacts' && selectedPeer"
         :peer="selectedPeer"
@@ -643,8 +762,17 @@ onUnmounted(() => {
       />
       <ChatPane
         v-else-if="chatStore.activeConv"
+        ref="chatPane"
+        :history-open="!!history"
+        @find="findInChat"
         :win7-ime-compat="info?.windows7 === true"
       />
+      <section v-else-if="tab === 'chat' && settings?.setupDone && !chatStore.visibleConvs.length && !history && !searchQuery.trim()" class="pane-empty" aria-labelledby="first-chat-title">
+        <span class="pane-empty-icon"><PantryIcon name="chat" :size="30" /></span>
+        <h2 id="first-chat-title">{{ tr('开始第一段对话') }}</h2>
+        <p>{{ tr('从通讯录选择一位同事，就能发送消息和文件。') }}</p>
+        <NButton type="primary" @click="findColleague">{{ tr('找同事') }}</NButton>
+      </section>
       <div v-else class="empty">
         <p class="quote">{{ tr(quote.text) }}</p>
         <p class="quote-author">{{ tr(quote.author) }}</p>
@@ -688,7 +816,7 @@ onUnmounted(() => {
     <span class="undo-text">{{ tr('已删除与「{0}」的聊天记录', { 0: chatStore.pendingRemoval.name }) }}</span>
     <button type="button" class="undo-btn" @click="chatStore.undoRemoveConversation()">{{ tr('撤回 {0}s', { 0: chatStore.pendingRemoval.secondsLeft }) }}</button>
   </div>
-  <Transition name="capture-toast">
+  <Transition name="notice">
     <div
       v-if="captureNotice || transferWarning"
       class="capture-toast"
@@ -697,8 +825,8 @@ onUnmounted(() => {
     >
       <PantryIcon name="warning" :size="18" />
       <span>{{ transferWarning || captureNotice?.message }}</span>
-      <button type="button" :aria-label="transferWarning ? tr('关闭') : tr('关闭截图提示')"
-        @click="blockedTransfer = undefined; dismissCaptureFailure()">×</button>
+      <button type="button" class="icon-control compact-icon" :aria-label="transferWarning ? tr('关闭') : tr('关闭截图提示')"
+        @click="blockedTransfer = undefined; dismissCaptureFailure()"><PantryIcon name="x" size="inline" /></button>
     </div>
   </Transition>
   </NConfigProvider>
@@ -933,11 +1061,7 @@ onUnmounted(() => {
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition:
-    color 150ms ease,
-    background 150ms ease,
-    box-shadow 150ms ease,
-    transform 90ms ease-out;
+  transition: color var(--motion-feedback) ease, background-color var(--motion-feedback) ease;
 }
 .rail-btn:focus {
   outline: none;
@@ -988,7 +1112,6 @@ onUnmounted(() => {
   box-shadow: none;
 }
 .rail-btn:active:not(.is-disabled) {
-  transform: scale(0.96);
   background: var(--rail-active);
 }
 .rail-btn.is-disabled:not(.scanning) {
@@ -1189,12 +1312,10 @@ onUnmounted(() => {
   .new-group {
     transition: none;
   }
-  .rail-btn:active:not(.is-disabled) {
-    transform: none;
-  }
 }
 
 .capture-toast {
+  --notice-offset: -4px;
   position: fixed;
   top: 46px;
   left: 50%;
@@ -1222,38 +1343,6 @@ onUnmounted(() => {
   min-width: 0;
   flex: 1;
 }
-.capture-toast > button {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-2);
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-}
-.capture-toast > button:hover {
-  background: var(--surface-hover);
-  color: var(--text-1);
-}
-.capture-toast-enter-active,
-.capture-toast-leave-active {
-  transition: opacity 160ms ease, transform 180ms ease;
-}
-.capture-toast-enter-from,
-.capture-toast-leave-to {
-  opacity: 0;
-  transform: translate(-50%, -8px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .capture-toast-enter-active,
-  .capture-toast-leave-active {
-    transition: none;
-  }
-}
-
 /* 栏② 列表 */
 .list {
   width: clamp(240px, 28vw, 280px);
@@ -1266,6 +1355,11 @@ onUnmounted(() => {
   position: relative;
   z-index: 2;
 }
+.list.finding { width: clamp(264px, 34vw, 352px); flex-basis: clamp(264px, 34vw, 352px); }
+.list-home { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.history-shortcut { display: flex; align-items: center; gap: 7px; padding: 10px 14px; background: var(--material-strong); color: var(--primary-hover); border: 0; border-bottom: 1px solid var(--line); cursor: pointer; font: inherit; font-size: 13px; }
+.history-shortcut span { flex: 1; text-align: left; }
+.history-shortcut:hover { background: var(--primary-weak); }
 .search-box {
   /* 与聊天头部 .head 等高（84px），两栏顶栏分隔线连成一条（决议 #127）；
      padding-top 32px 让出拖拽带与 mac 红绿灯，与 .head 一致 */
@@ -1331,7 +1425,7 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(22, 34, 52, 0.26);
+  background: var(--scrim);
 
   animation: scan-confirm-fade 0.14s ease;
 }
@@ -1502,7 +1596,7 @@ onUnmounted(() => {
   border: 1px solid var(--line);
   box-shadow: var(--highlight-edge), var(--shadow-float);
 
-  animation: undo-rise 0.18s ease;
+  animation: undo-rise var(--motion-enter) var(--ease-out);
 }
 .undo-text {
   min-width: 0;
@@ -1538,7 +1632,7 @@ onUnmounted(() => {
 @keyframes undo-rise {
   from {
     opacity: 0;
-    transform: translate(-50%, 8px);
+    transform: translate(-50%, 4px);
   }
   to {
     opacity: 1;

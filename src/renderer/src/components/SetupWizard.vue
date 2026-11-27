@@ -64,16 +64,16 @@ async function finish(): Promise<void> {
       <div v-if="step === 1" class="body">
         <h2>{{ tr('怎么称呼你？') }}</h2>
         <p class="tip">{{ tr('昵称会显示在同事们的通讯录里（必填，可随时修改）') }}</p>
-        <input v-model="nick" class="field" maxlength="32" :placeholder="tr('昵称')" autofocus />
+        <input v-model="nick" class="field" maxlength="32" :aria-label="tr('昵称')" :placeholder="tr('昵称')" autofocus />
         <button class="primary" :disabled="!nickOk" @click="step = 2">{{ tr('下一步') }}</button>
       </div>
 
       <div v-else-if="step === 2" class="body">
         <h2>{{ tr('你在哪个团队？') }}</h2>
         <p class="tip">{{ tr('选填——填了之后，你会出现在通讯录对应的分组树下') }}</p>
-        <input v-model="company" class="field" maxlength="32" :placeholder="tr('公司（选填）')" />
-        <input v-model="dept" class="field" maxlength="32" :placeholder="tr('部门（选填）')" />
-        <input v-model="team" class="field" maxlength="32" :placeholder="tr('团队（选填）')" />
+        <input v-model="company" class="field" maxlength="32" :aria-label="tr('公司（选填）')" :placeholder="tr('公司（选填）')" />
+        <input v-model="dept" class="field" maxlength="32" :aria-label="tr('部门（选填）')" :placeholder="tr('部门（选填）')" />
+        <input v-model="team" class="field" maxlength="32" :aria-label="tr('团队（选填）')" :placeholder="tr('团队（选填）')" />
         <div class="actions">
           <button class="ghost" @click="step = 1">{{ tr('上一步') }}</button>
           <button class="primary" @click="step = 3">{{ tr('下一步') }}</button>
@@ -106,10 +106,14 @@ async function finish(): Promise<void> {
   z-index: 10;
 }
 .card {
-  width: 380px;
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
   background: var(--bg-window);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-float);
   padding: 32px 36px 28px;
   text-align: center;
 }
@@ -162,22 +166,25 @@ async function finish(): Promise<void> {
   width: 100%;
   height: 36px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   padding: 0 10px;
   font-size: 14px;
   outline: none;
   margin-bottom: 10px;
   user-select: text;
+  background: var(--bg-input);
+  color: var(--text-1);
 }
-.field:focus {
-  border-color: var(--primary);
+.field:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
 }
 .dir {
   display: flex;
   align-items: center;
   gap: 8px;
   background: var(--bg-list);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   padding: 8px 10px;
   margin-bottom: 18px;
 }
@@ -199,9 +206,13 @@ async function finish(): Promise<void> {
   color: var(--on-primary);
   font-size: 14px;
   padding: 8px 28px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   flex: 1;
+}
+@media (hover: hover) {
+  .primary:enabled:hover { background: var(--primary-hover); }
+  .ghost:hover { background: var(--surface-hover); }
 }
 .primary:disabled {
   opacity: 0.4;
@@ -213,7 +224,7 @@ async function finish(): Promise<void> {
   color: var(--text-2);
   font-size: 14px;
   padding: 8px 18px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 .ghost.small {

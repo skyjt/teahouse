@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { tr } from './utils/i18n'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import PantryIcon from './components/PantryIcon.vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import type { CaptureInit } from '../../shared/ipc'
 import { mapCaptureRectToImage } from './utils/capture-crop'
 import {
   CAPTURE_TEXT_MAX_LENGTH,
@@ -12,8 +12,15 @@ import {
 import { placeCaptureToolbar } from './utils/capture-toolbar'
 
 // 截图框选窗（F-CAP-1）：屏幕图像做背景 → 拖拽框选 → 发送/复制/取消。
-// Esc 取消，Enter=发送。坐标按截图自然尺寸与实际视口分别映射（决议 #221）。
+// Esc 取消，全局截图按 Enter 复制，聊天截图按 Enter 发送给发起会话。坐标按截图自然尺寸与实际视口分别映射（决议 #221）。
 
+const PantryIcon = defineAsyncComponent(() => import('./components/PantryIcon.vue'))
+const recipients = ref<CaptureInit['recipients']>([])
+const pinnedConvId = ref<string | null>(null)
+const selectedConvId = ref('')
+const finishing = ref(false)
+const actionError = ref('')
+const selectedName = computed(() => recipients.value.find((r) => r.convId === selectedConvId.value)?.name)
 const snapshotUrl = ref('')
 const snapshotEl = ref<HTMLImageElement | null>(null)
 const dragging = ref(false)
@@ -79,8 +86,11 @@ let moveFrame: number | null = null
 let pendingPoint: { x: number; y: number } | null = null
 
 onMounted(() => {
-  unsubscribe = window.pantry.onCaptureInit((pngBytes) => {
-    void prepareSnapshot(pngBytes)
+  unsubscribe = window.pantry.onCaptureInit((init) => {
+    recipients.value = init.recipients
+    pinnedConvId.value = init.pinnedConvId
+    selectedConvId.value = init.recipients.find((r) => r.convId === init.pinnedConvId)?.convId ?? ''
+    void prepareSnapshot(init.pngBytes)
   })
   window.addEventListener('keydown', onKey)
   window.addEventListener('resize', refreshToolbarLayout)
@@ -167,8 +177,9 @@ function onKey(event: KeyboardEvent): void {
   }
   if (event.key === 'Escape') {
     cancel()
-  } else if (event.key === 'Enter' && rect.value) {
-    void confirm(true)
+  } else if (event.key === 'Enter' && rect.value && !(event.target instanceof Element && event.target.closest('button, select'))) {
+    event.preventDefault()
+    void confirm(!!pinnedConvId.value && !!selectedConvId.value)
   }
 }
 
@@ -243,10 +254,12 @@ async function onMouseUp(event: MouseEvent): Promise<void> {
 }
 
 function cancel(): void {
-  void window.pantry.captureDone(new ArrayBuffer(0), false)
+  if (!finishing.value) void window.pantry.captureDone(new ArrayBuffer(0))
 }
 
 async function confirm(send: boolean): Promise<void> {
+  if (finishing.value || (send && !selectedConvId.value)) return
+  const target = send ? selectedConvId.value : undefined
   commitPendingText()
   const r = rect.value
   const img = snapshotEl.value
@@ -274,9 +287,17 @@ async function confirm(send: boolean): Promise<void> {
     canvas.height
   )
   drawAnnotations(ctx, crop.scaleX, crop.scaleY)
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-  if (!blob) return
-  await window.pantry.captureDone(await blob.arrayBuffer(), send)
+  finishing.value = true
+  actionError.value = ''
+  try {
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (blob && await window.pantry.captureDone(await blob.arrayBuffer(), target)) return
+  } catch {
+    // 窗口仍在，用户可以重试或复制。
+  } finally {
+    finishing.value = false
+  }
+  actionError.value = target ? tr('未能发送截图，可以复制后重试。') : tr('复制失败，请重试。')
 }
 
 function inSelection(x: number, y: number): boolean {
@@ -557,7 +578,7 @@ function drawMosaic(
           :aria-pressed="tool === 'select'"
           @click="setTool('select')"
         >
-          <PantryIcon name="capture-select" :size="17" />
+          <PantryIcon name="capture-select" size="compact" />
         </button>
         <button
           type="button"
@@ -568,7 +589,7 @@ function drawMosaic(
           :aria-pressed="tool === 'rect'"
           @click="setTool('rect')"
         >
-          <PantryIcon name="capture-rect" :size="17" />
+          <PantryIcon name="capture-rect" size="compact" />
         </button>
         <button
           type="button"
@@ -579,7 +600,7 @@ function drawMosaic(
           :aria-pressed="tool === 'arrow'"
           @click="setTool('arrow')"
         >
-          <PantryIcon name="capture-arrow" :size="17" />
+          <PantryIcon name="capture-arrow" size="compact" />
         </button>
         <button
           type="button"
@@ -590,7 +611,7 @@ function drawMosaic(
           :aria-pressed="tool === 'text'"
           @click="setTool('text')"
         >
-          <PantryIcon name="text-select" :size="17" />
+          <PantryIcon name="text-select" size="compact" />
         </button>
         <button
           type="button"
@@ -601,26 +622,33 @@ function drawMosaic(
           :aria-pressed="tool === 'mosaic'"
           @click="setTool('mosaic')"
         >
-          <PantryIcon name="capture-mosaic" :size="17" />
+          <PantryIcon name="capture-mosaic" size="compact" />
         </button>
         <span class="toolbar-divider" aria-hidden="true"></span>
+        <select v-if="!pinnedConvId && recipients.length" v-model="selectedConvId"
+          class="recipient" :aria-label="tr('选择收件人')" @change="nextTick(refreshToolbarLayout)">
+          <option value="">{{ tr('选择收件人') }}</option>
+          <option v-for="r in recipients" :key="r.convId" :value="r.convId">{{ r.name }}</option>
+        </select>
         <button
+          v-if="selectedName"
           type="button"
-          class="btn primary"
-          :data-tooltip="tr('发送')"
-          :aria-label="tr('发送')"
+          class="btn named" :class="{ primary: pinnedConvId }"
+          :disabled="finishing"
+          :data-tooltip="tr('发送给 {0}', { 0: selectedName })"
+          :aria-label="tr('发送给 {0}', { 0: selectedName })"
           @click="confirm(true)"
         >
-          <PantryIcon name="send" :size="17" />
+          <span>{{ tr('发送给 {0}', { 0: selectedName }) }}</span>
         </button>
         <button
           type="button"
-          class="btn"
+          class="btn named" :class="{ primary: !pinnedConvId || !selectedName }" :disabled="finishing"
           :data-tooltip="tr('复制')"
           :aria-label="tr('复制')"
           @click="confirm(false)"
         >
-          <PantryIcon name="copy" :size="17" />
+          {{ tr('复制') }}
         </button>
         <button
           type="button"
@@ -629,11 +657,12 @@ function drawMosaic(
           :aria-label="tr('取消')"
           @click="cancel"
         >
-          <PantryIcon name="x" :size="17" />
+          <PantryIcon name="x" size="compact" />
         </button>
       </div>
     </template>
     <div v-else class="hint">{{ tr('拖拽框选区域 · Esc 取消') }}</div>
+    <div v-if="actionError" class="hint" role="alert">{{ actionError }}</div>
   </div>
 </template>
 
@@ -750,13 +779,15 @@ function drawMosaic(
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(28, 28, 28, 0.92);
-  border-radius: 6px;
+  background: var(--media-toolbar);
+  border-radius: calc(var(--radius-control) + 5px);
   padding: 5px 7px;
-  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--media-shadow);
 }
 .size {
-  color: #bbb;
+  color: var(--media-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   margin: 0 3px 0 1px;
 }
@@ -764,18 +795,21 @@ function drawMosaic(
   position: relative;
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: var(--control-square);
+  height: var(--control-square);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: rgba(255, 255, 255, 0.14);
-  color: #eee;
+  color: var(--media-ink);
   padding: 0;
   cursor: pointer;
   transition:
     background 120ms ease,
     color 120ms ease;
 }
+.recipient { max-width: 145px; height: var(--control-square); border-radius: var(--radius-control); }
+.btn.named { width: auto; max-width: 190px; padding: 0 9px; white-space: nowrap; }
+.btn.named span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .btn::before,
 .btn::after {
   position: absolute;
@@ -847,7 +881,7 @@ function drawMosaic(
   background: rgba(255, 255, 255, 0.23);
 }
 .btn:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline: 2px solid var(--media-focus);
   outline-offset: 2px;
 }
 .btn.primary {
@@ -883,5 +917,8 @@ function drawMosaic(
   padding: 6px 14px;
   border-radius: var(--radius-panel);
   pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn, .btn::before, .btn::after { transition: none; }
 }
 </style>

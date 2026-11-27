@@ -31,7 +31,7 @@ export function useShareBrowser(getPeerId: () => string | null) {
   let peerRevision = 0
   let browseRevision = 0
 
-  const canUpload = computed(() => perm.value === 'write')
+  const canUpload = computed(() => perm.value === 'write' && !loading.value && !failReason.value)
   const hasMore = computed(() => entries.value.length < total.value)
   const failText = computed(() => (failReason.value ? tr(SHARE_FAIL_TEXT[failReason.value]) : ''))
   const moreFailText = computed(() => (moreFailReason.value ? tr(SHARE_FAIL_TEXT[moreFailReason.value]) : ''))
@@ -83,10 +83,22 @@ export function useShareBrowser(getPeerId: () => string | null) {
     moreFailReason.value = null
   }
 
+  function showFailure(reason: ShareBrowseFailReason): void {
+    failReason.value = reason
+    perm.value = 'read'
+    snapshotId.value = ''
+    entries.value = []
+    picked.value = new Set()
+    cursor.value = -1
+    total.value = 0
+    truncated.value = false
+  }
+
   async function load(next: string, keepPick = false): Promise<void> {
     const peerId = getPeerId()
     if (!peerId) return
     const revision = ++browseRevision
+    path.value = next
     loading.value = true
     loadingMore.value = false
     failReason.value = null
@@ -100,15 +112,17 @@ export function useShareBrowser(getPeerId: () => string | null) {
     if (revision !== browseRevision || getPeerId() !== peerId) return
     loading.value = false
     if (!result.ok) {
-      failReason.value = result.reason
-      entries.value = []
-      total.value = 0
+      showFailure(result.reason)
       return
     }
     path.value = result.path
     perm.value = result.perm
     snapshotId.value = result.snapshotId
     entries.value = result.entries
+    if (keepPick) {
+      picked.value = new Set(result.entries.filter((entry) => picked.value.has(entry.name)).map((entry) => entry.name))
+      cursor.value = -1
+    }
     total.value = result.total
     truncated.value = result.truncated
   }
@@ -133,10 +147,15 @@ export function useShareBrowser(getPeerId: () => string | null) {
         await load(path.value, true)
         return
       }
-      // 已取到的条目一律保留，失败只落在列表末尾（决议 #278）
+      if (result.reason === 'off' || result.reason === 'no-perm') {
+        showFailure(result.reason)
+        return
+      }
+      // 暂时的翻页失败只落在列表末尾，保留已取到的条目。
       moreFailReason.value = result.reason
       return
     }
+    perm.value = result.perm
     entries.value = [...entries.value, ...result.entries]
     total.value = result.total
     snapshotId.value = result.snapshotId
@@ -207,8 +226,9 @@ export function useShareBrowser(getPeerId: () => string | null) {
     const peerId = getPeerId()
     if (!peerId) return
     const paths = only ?? [...picked.value].map((name) => childPath(name))
-    if (paths.length === 0 || downloading.value) return
+    if (paths.length === 0 || downloading.value || loading.value || failReason.value) return
     const revision = peerRevision
+    const directoryRevision = browseRevision
     downloading.value = true
     note.value = ''
     transfer.value = null
@@ -220,8 +240,8 @@ export function useShareBrowser(getPeerId: () => string | null) {
       return
     }
     if (result.canceled) return
-    if (!only) picked.value = new Set()
-    note.value = tr('已开始下载')
+    if (!only && directoryRevision === browseRevision) picked.value = new Set()
+    if (!transfer.value) note.value = tr('已开始下载')
   }
 
   // 上传落到对方共享根下以上传者命名的子目录，与当前浏览位置无关（决议 #272）。
@@ -239,7 +259,7 @@ export function useShareBrowser(getPeerId: () => string | null) {
       note.value = tr(SHARE_UPLOAD_FAIL_TEXT[result.reason])
       return
     }
-    if (!result.canceled) note.value = tr('正在上传 {0} 个文件', { 0: result.fileCount })
+    if (!result.canceled && !transfer.value) note.value = tr('正在上传 {0} 个文件', { 0: result.fileCount })
   }
 
   async function uploadDropped(localPaths: string[]): Promise<void> {
@@ -259,7 +279,7 @@ export function useShareBrowser(getPeerId: () => string | null) {
       note.value = tr(SHARE_UPLOAD_FAIL_TEXT[result.reason])
       return
     }
-    if (!result.canceled) note.value = tr('正在上传 {0} 个文件', { 0: result.fileCount })
+    if (!result.canceled && !transfer.value) note.value = tr('正在上传 {0} 个文件', { 0: result.fileCount })
   }
 
   function cancelTransfer(): void {

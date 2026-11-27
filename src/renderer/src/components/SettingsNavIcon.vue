@@ -9,67 +9,45 @@ withDefaults(
 </script>
 
 <template>
-  <!-- 设置侧栏专用图标（决议 #239）：同一 24px 网格与 1.6px 圆角线条。 -->
+  <!-- 设置侧栏专用图标（决议 #239）：同一 24px 网格与 1.8px 圆角线条。 -->
   <svg
     class="settings-nav-icon"
     :width="size"
     :height="size"
     viewBox="0 0 24 24"
     aria-hidden="true"
+    focusable="false"
   >
     <g v-if="name === 'settings-profile'">
-      <rect x="4.5" y="5.2" width="15" height="13.6" rx="2.5" />
-      <circle cx="9.2" cy="10" r="2.1" />
-      <path d="M6.8 15.5c.4-1.9 1.2-2.8 2.4-2.8s2 .9 2.4 2.8" />
-      <path d="M14.2 9h2.7" />
-      <path d="M14.2 12h2.7" />
-      <path d="M14.2 15h1.9" />
+      <rect x="2.8" y="4.6" width="18.4" height="14.8" rx="2.4" />
+      <circle cx="8.4" cy="10" r="2.1" />
+      <path d="M5 16c.5-1.7 1.6-2.5 3.4-2.5s3 .8 3.4 2.5M14.6 9.4h3.3m-3.3 4.3h2.5" />
     </g>
     <g v-else-if="name === 'settings-general'">
-      <path d="M5 7h2.5" />
-      <path d="M10.5 7H19" />
-      <circle cx="9" cy="7" r="1.5" />
-      <path d="M5 12h8" />
-      <path d="M16 12h3" />
-      <circle cx="14.5" cy="12" r="1.5" />
-      <path d="M5 17h4.5" />
-      <path d="M12.5 17H19" />
-      <circle cx="11" cy="17" r="1.5" />
+      <path d="M3.5 7.3h3.6m5 0h8.4m-17 9.4h8.4m5 0h3.6" />
+      <circle cx="9.6" cy="7.3" r="2.5" />
+      <circle cx="14.4" cy="16.7" r="2.5" />
     </g>
     <g v-else-if="name === 'settings-notify'">
-      <path d="M7.2 16.5v-5.2a4.8 4.8 0 0 1 9.6 0v5.2" />
-      <path d="M5.5 16.5h13" />
-      <path d="M10 19a2.2 2.2 0 0 0 4 0" />
-      <path d="M12 6.5V4.8" />
+      <path d="M4.3 16.9c2-1.8 2-4.1 2-6.6a5.7 5.7 0 0 1 11.4 0c0 2.5 0 4.8 2 6.6Zm5.2 2.3a2.9 2.9 0 0 0 5 0M12 3v1.4" />
     </g>
     <g v-else-if="name === 'settings-storage'">
-      <path d="M4.5 5.5h11.8v9.2H9.2l-3.8 2.8.8-2.8H4.5V5.5Z" />
-      <path d="M13.3 10.2h3.4l2.3 2.3v6h-5.7v-8.3Z" />
-      <path d="M16.7 10.2v2.3H19" />
-      <path d="M15.3 15.2H17" />
+      <path d="M9.8 15.3H8l-3.8 2.5.6-3a2 2 0 0 1-1.6-2V5.9c0-1.2.9-2.1 2.1-2.1h10c1.2 0 2.1.9 2.1 2.1v.9" />
+      <path d="M13 9.1h4.6l3.2 3.3v7.5c0 .5-.4.9-.9.9H13a.9.9 0 0 1-.9-.9V10c0-.5.4-.9.9-.9Z" />
     </g>
     <g v-else-if="name === 'settings-network'">
-      <circle cx="12" cy="6.5" r="2.2" />
-      <circle cx="6.5" cy="17" r="2.2" />
-      <circle cx="17.5" cy="17" r="2.2" />
-      <path d="M12 8.7v3" />
-      <path d="M6.5 14.8v-1.3c0-1 .8-1.8 1.8-1.8h7.4c1 0 1.8.8 1.8 1.8v1.3" />
+      <rect x="8.8" y="3.6" width="6.4" height="5.3" rx="1.3" />
+      <rect x="3" y="15.1" width="6.4" height="5.3" rx="1.3" />
+      <rect x="14.6" y="15.1" width="6.4" height="5.3" rx="1.3" />
+      <path d="M12 9v3.1m-5.8 2.7v-2.7h11.6v2.7" />
     </g>
     <g v-else-if="name === 'settings-shortcuts'">
-      <rect x="4.5" y="6.2" width="15" height="11.6" rx="2.2" />
-      <path d="M7.5 9.8h.1" />
-      <path d="M10.5 9.8h.1" />
-      <path d="M13.5 9.8h.1" />
-      <path d="M16.5 9.8h.1" />
-      <path d="M7.5 13h.1" />
-      <path d="M10.5 13h.1" />
-      <path d="M13.5 13h3" />
-      <path d="M8.5 15.7h7" />
+      <rect x="2.6" y="5" width="18.8" height="14" rx="2.5" />
+      <path d="M6.6 9.6h.1m3.4 0h.1m3.5 0h.1m3.4 0h.1M7 14.3h.1m3.5 0H17" />
     </g>
     <g v-else-if="name === 'settings-about'">
-      <circle cx="12" cy="12" r="7.5" />
-      <path d="M12 11.2v4.8" />
-      <path d="M12 8h.01" />
+      <circle cx="12" cy="12" r="8.7" />
+      <path d="M12 11.2V16m0-8h.01" />
     </g>
   </svg>
 </template>
@@ -80,7 +58,7 @@ withDefaults(
   flex-shrink: 0;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.6;
+  stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }

@@ -142,7 +142,7 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   z-index: 1200;
-  animation: mask-in 140ms ease-out;
+  animation: mask-in var(--motion-feedback) ease-out;
 }
 .dialog {
   width: min(460px, calc(100vw - 32px));
@@ -152,8 +152,10 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-float);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  animation: dialog-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  animation: dialog-in var(--motion-enter) var(--ease-out);
 }
 .header {
   display: flex;
@@ -223,6 +225,7 @@ onBeforeUnmount(() => {
   font-size: var(--font-xs);
   color: var(--text-3);
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .feedback {
   font-size: var(--font-xs);
@@ -265,7 +268,7 @@ onBeforeUnmount(() => {
   from { opacity: 0; }
 }
 @keyframes dialog-in {
-  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  from { opacity: 0; transform: translateY(4px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .mask, .dialog { animation: none; }

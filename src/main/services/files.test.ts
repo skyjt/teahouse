@@ -2436,7 +2436,7 @@ describe('最近有人放进来（决议 #283）', () => {
     })
 
     expect(svc.listShareUploads(10)).toEqual([
-      { transferId: 't-put', peerId: 'node-bob', fileCount: 3, totalSize: 2048, ts: 3000 }
+      { transferId: 't-put', peerId: 'node-bob', fileName: '设计稿', fileCount: 3, totalSize: 2048, ts: 3000 }
     ])
   })
 
@@ -2454,7 +2454,7 @@ describe('最近有人放进来（决议 #283）', () => {
     })
 
     expect(svc.listShareUploads(10)).toEqual([
-      { transferId: 't-orphan', peerId: 'node-bob', fileCount: 0, totalSize: 10, ts: 1000 }
+      { transferId: 't-orphan', peerId: 'node-bob', fileName: '归档', fileCount: 0, totalSize: 10, ts: 1000 }
     ])
   })
 })

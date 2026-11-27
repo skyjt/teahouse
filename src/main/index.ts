@@ -20,6 +20,7 @@ import {
   type Tray
 } from 'electron'
 import { networkInterfaces } from 'node:os'
+import { isIPv4 } from 'node:net'
 import {
   accessSync,
   constants as fsConstants,
@@ -44,6 +45,7 @@ import {
   type AppSettingsPatch,
   type ConversationSearchOptions,
   type CaptureFailureReason,
+  type CaptureInit,
   type DataExportOptions,
   type DataImportResult,
   type ExportFormat,
@@ -54,6 +56,7 @@ import {
   type ImageSourceBytes,
   type MessageView,
   type NetState,
+  type OwnShareListing,
   type NudgeEvent,
   type NudgeResult,
   type PeerView,
@@ -117,6 +120,7 @@ import { syncSettingsWindowLanguage, openSettingsWindow, syncSettingsWindowZoom 
 import {
   closeCaptureWindow,
   openCaptureWindow,
+  isCaptureSender,
   showCaptureWindow
 } from './windows/capture-window'
 import { planCaptureGeometry } from './windows/capture-geometry'
@@ -147,6 +151,9 @@ import { PeersRepo } from './store/peers-repo'
 import { ShareGrantsRepo } from './store/share-grants-repo'
 import {
   evaluateShareRoot,
+  listShareDirectory,
+  resolveWithinRoot,
+  sanitizeSharePath,
   ShareDownloadGate,
   shareDownloadDirName,
   ShareService
@@ -312,6 +319,7 @@ if (!gotLock) {
   let shareGrantsRepo: ShareGrantsRepo | null = null
   let share: ShareService | null = null
   let capturing = false
+  let captureTargets = new Set<string>()
   let pruneTimer: ReturnType<typeof setInterval> | null = null
   let avatarPruneTimer: ReturnType<typeof setTimeout> | null = null
   let appState: AppState | null = null
@@ -717,34 +725,51 @@ if (!gotLock) {
   }
 
   function normalizeExportOptions(input: unknown): DataExportOptions | undefined {
-    if (typeof input !== 'object' || input === null) return undefined
+    if (input === undefined) return undefined
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) throw new Error('invalid-export-scope')
     const raw = input as Record<string, unknown>
+    if (Object.keys(raw).some((key) => !['convId', 'fromTs', 'toTs'].includes(key))) throw new Error('invalid-export-scope')
     const out: DataExportOptions = {}
-    if (typeof raw.convId === 'string' && raw.convId.length > 0 && raw.convId.length <= 128) {
+    if (raw.convId !== undefined) {
+      if (typeof raw.convId !== 'string' || !raw.convId || raw.convId.length > 128) throw new Error('invalid-export-scope')
       out.convId = raw.convId
     }
-    if (typeof raw.fromTs === 'number' && Number.isFinite(raw.fromTs) && raw.fromTs >= 0) {
-      out.fromTs = Math.floor(raw.fromTs)
+    for (const key of ['fromTs', 'toTs'] as const) {
+      const value = raw[key]
+      if (value === undefined) continue
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error('invalid-export-scope')
+      out[key] = Math.floor(value)
     }
-    if (typeof raw.toTs === 'number' && Number.isFinite(raw.toTs) && raw.toTs >= 0) {
-      out.toTs = Math.floor(raw.toTs)
-    }
+    if (out.fromTs !== undefined && out.toTs !== undefined && out.fromTs > out.toTs) throw new Error('invalid-export-scope')
     return Object.keys(out).length > 0 ? out : undefined
   }
 
   function normalizeConversationSearch(input: unknown): ConversationSearchOptions | null {
     if (typeof input !== 'object' || input === null) return null
     const raw = input as Record<string, unknown>
-    if (typeof raw.convId !== 'string' || raw.convId.length === 0 || raw.convId.length > 128) {
+    if (raw.convId !== null && (typeof raw.convId !== 'string' || !raw.convId.trim() || raw.convId.length > 128)) {
       return null
     }
     if (typeof raw.query !== 'string' || raw.query.length > 128) return null
     const kind =
-      raw.kind === 'image' || raw.kind === 'file' || raw.kind === 'all' ? raw.kind : 'all'
+      raw.kind === 'image' || raw.kind === 'file' || raw.kind === 'message' ? raw.kind : 'all'
     const out: ConversationSearchOptions = {
       convId: raw.convId,
       query: raw.query,
       kind
+    }
+    if (raw.senderId !== undefined) {
+      if (typeof raw.senderId !== 'string' || !raw.senderId || raw.senderId.length > 128) return null
+      out.senderId = raw.senderId
+    }
+    if (raw.fromMe === true) out.fromMe = true
+    if (raw.before !== undefined) {
+      if (!raw.before || typeof raw.before !== 'object') return null
+      const cursor = raw.before as Record<string, unknown>
+      if (typeof cursor.ts !== 'number' || !Number.isSafeInteger(cursor.ts) ||
+          typeof cursor.seq !== 'number' || !Number.isSafeInteger(cursor.seq) ||
+          typeof cursor.msgId !== 'string' || !cursor.msgId || cursor.msgId.length > 256) return null
+      out.before = { ts: cursor.ts, seq: cursor.seq, msgId: cursor.msgId }
     }
     if (typeof raw.fromTs === 'number' && Number.isFinite(raw.fromTs) && raw.fromTs >= 0) {
       out.fromTs = Math.floor(raw.fromTs)
@@ -1483,8 +1508,8 @@ if (!gotLock) {
     sendToMainWindow()
   }
 
-  /** 内置截图（F-CAP-1）：抓主屏 → 框选窗 → 剪贴板（可选直发当前会话） */
-  async function startCapture(): Promise<void> {
+  /** 内置截图：复制到剪贴板，或发送给截图窗明确显示的收件人。 */
+  async function startCapture(pinnedConvId: string | null = null): Promise<void> {
     if (capturing) return
     capturing = true
     captureStatus = 'starting'
@@ -1549,7 +1574,17 @@ if (!gotLock) {
         png.byteOffset,
         png.byteOffset + png.byteLength
       ) as ArrayBuffer
-      openCaptureWindow(geometry.windowBounds, pngBytes, () => {
+      const onlinePeers = peerViews().filter((peer) => peer.online)
+      const onlineIds = new Set(onlinePeers.map((peer) => peer.nodeId))
+      const recipients: CaptureInit['recipients'] = [
+        ...onlinePeers.map((peer) => ({ convId: 'single:' + peer.nodeId, name: peer.remark || peer.nick })),
+        ...(groups?.list() ?? [])
+          .filter((group) => group.amMember && group.members.some((id) => onlineIds.has(id)))
+          .map((group) => ({ convId: 'group:' + group.groupId, name: group.name }))
+      ].filter((target) => !pinnedConvId || target.convId === pinnedConvId)
+      captureTargets = new Set(recipients.map((target) => target.convId))
+      openCaptureWindow(geometry.windowBounds, { pngBytes, pinnedConvId, recipients }, () => {
+        captureTargets.clear()
         capturing = false
         if (wasVisible) showMainWindow({ forceForeground: true })
       })
@@ -1777,8 +1812,9 @@ if (!gotLock) {
 
   ipcMain.handle(IpcChannels.convList, () => chat?.listConversations() ?? [])
 
-  ipcMain.handle(IpcChannels.convOpen, (_event, peerId: unknown) => {
+  ipcMain.handle(IpcChannels.convOpen, (_event, peerId: unknown, type: unknown) => {
     if (typeof peerId !== 'string' || peerId.length === 0 || peerId.length > 64) return null
+    if (type === 'group') return chat?.openGroupConversation(peerId) ?? null
     return chat?.openConversation(peerId) ?? null
   })
 
@@ -2117,6 +2153,25 @@ if (!gotLock) {
       } catch {
         return { ok: false, reason: 'unreadable' }
       }
+      const modeLabel = (mode: ShareGrantView['mode']): string =>
+        mode === 'off' ? tr('不可访问') : mode === 'read' ? tr('可下载') : tr('可下载和上传')
+      const permissionDetails = (): string => {
+        const exceptions = shareGrantViews().map((g) => `${g.name} · ${modeLabel(g.mode)}`)
+        return [
+          check.path, tr('其他同事的默认权限') + ' · ' + modeLabel(appState!.config.fileCabinet.mode),
+          tr('指定同事的权限') + ' · ' + (exceptions.join('\n') || tr('无'))
+        ].join('\n\n')
+      }
+      // 新柜子默认仅自己可见。有沿用的访问权限时，文件对外可见之前由本人确认。
+      while (appState.config.fileCabinet.mode !== 'off' || shareGrantViews().some((g) => g.mode !== 'off')) {
+        const detail = permissionDetails()
+        const { response } = await dialog.showMessageBox(owner, {
+          type: 'question', message: tr('确认此目录的访问权限'), detail,
+          buttons: [tr('取消'), tr('使用此目录')], defaultId: 0, cancelId: 0
+        })
+        if (response !== 1) return { ok: true, canceled: true }
+        if (detail === permissionDetails()) break
+      }
       saveAppSettings(appState, {
         fileCabinet: { root: check.path, mode: appState.config.fileCabinet.mode }
       })
@@ -2134,17 +2189,27 @@ if (!gotLock) {
     return broadcastSettings()
   })
 
-  ipcMain.handle(IpcChannels.shareMyReveal, async (): Promise<boolean> => {
-    const root = appState?.config.fileCabinet.root ?? ''
-    if (!root) return false
+  ipcMain.handle(IpcChannels.shareMyList, (_event, path: unknown): OwnShareListing | null => {
+    const rel = sanitizeSharePath(path)
+    return rel === null ? null : listShareDirectory(appState?.config.fileCabinet.root ?? '', rel)
+  })
+
+  ipcMain.handle(IpcChannels.shareMyReveal, async (_event, path: unknown = ''): Promise<boolean> => {
+    const rel = sanitizeSharePath(path)
+    if (rel === null) return false
+    const target = resolveWithinRoot(appState?.config.fileCabinet.root ?? '', rel)
+    if (!target) return false
     try {
-      if (!(await stat(root)).isDirectory()) return false
-      if (process.platform === 'linux') {
-        // Electron 22 的 openPath 会在主线程等待 xdg-open 退出。
-        await shell.openExternal(pathToFileURL(root).href)
+      if (!(await stat(target)).isDirectory()) {
+        shell.showItemInFolder(target)
         return true
       }
-      return (await shell.openPath(root)) === ''
+      if (process.platform === 'linux') {
+        // Electron 22 的 openPath 会在主线程等待 xdg-open 退出。
+        await shell.openExternal(pathToFileURL(target).href)
+        return true
+      }
+      return (await shell.openPath(target)) === ''
     } catch {
       return false
     }
@@ -2338,6 +2403,7 @@ if (!gotLock) {
           name: resolvePeerDisplayName(item.peerId) || item.peerId.slice(0, 8),
           avatar: record?.profile.avatar ?? -1,
           avatarHash: record?.profile.avatarHash ?? '',
+          fileName: item.fileName,
           fileCount: item.fileCount,
           totalSize: item.totalSize,
           ts: item.ts
@@ -2346,10 +2412,11 @@ if (!gotLock) {
     }
   )
 
-  ipcMain.handle(IpcChannels.filePick, async (event, directory: unknown): Promise<string[] | null> => {
+  ipcMain.handle(IpcChannels.filePick, async (event, directory: unknown, recipient: unknown): Promise<string[] | null> => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {
       title: directory === true ? tr('选择要发送的文件夹') : tr('选择要发送的文件'),
+      buttonLabel: typeof recipient === 'string' ? tr('立即发送给 {0}', { 0: recipient }) : tr('发送'),
       properties: directory === true ? ['openDirectory'] : ['openFile', 'multiSelections']
     })
     if (result.canceled || result.filePaths.length === 0) return null
@@ -2357,11 +2424,12 @@ if (!gotLock) {
     return result.filePaths
   })
 
-  ipcMain.handle(IpcChannels.imgPick, async (event, purpose: unknown): Promise<string[] | null> => {
+  ipcMain.handle(IpcChannels.imgPick, async (event, purpose: unknown, recipient: unknown): Promise<string[] | null> => {
     if (!mainWindow) return null
     if (purpose !== undefined && purpose !== 'sticker') return null
     const result = await dialog.showOpenDialog(mainWindow, {
       title: purpose === 'sticker' ? tr('选择要导入的表情') : tr('选择要发送的图片'),
+      ...(purpose !== 'sticker' && typeof recipient === 'string' ? { buttonLabel: tr('立即发送给 {0}', { 0: recipient }) } : {}),
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: tr('图片'), extensions: IMAGE_PICKER_EXTENSIONS }]
     })
@@ -2448,31 +2516,47 @@ if (!gotLock) {
 
   ipcMain.handle(
     IpcChannels.dataExport,
-    async (_event, format: unknown, options: unknown): Promise<string | null> => {
+    async (event, format: unknown, options: unknown): Promise<string | null> => {
       if (format !== 'backup' && format !== 'html' && format !== 'txt') return null
-      if (!mainWindow || !porter) return null
+      if (!mainWindow || !porter) throw new Error('backup-storage-unavailable')
       const fmt = format as ExportFormat
       const exportOptions = normalizeExportOptions(options)
       const ext = fmt === 'backup' ? 'pantry-bak' : fmt
-      const result = await dialog.showSaveDialog(mainWindow, {
+      const owner = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+      const backup = fmt === 'backup' ? porter.prepareBackup(exportOptions) : null
+      if (backup) {
+        const counts = backup.counts
+        const { response } = await dialog.showMessageBox(owner, {
+          type: 'question',
+          message: exportOptions ? tr('导出所选记录') : tr('完整迁移备份'),
+          detail: tr('将包含 {0} 段会话、{1} 条消息、{2} 名联系人、{3} 个讨论组和 {4} 个媒体文件。', {
+            0: counts.conversations, 1: counts.messages, 2: counts.peers, 3: counts.groups, 4: counts.media
+          }),
+          buttons: [tr('取消'), tr('继续')], defaultId: 1, cancelId: 0
+        })
+        if (response !== 1) return null
+      }
+      const result = await dialog.showSaveDialog(owner, {
         title: tr('导出聊天记录'),
         defaultPath: tr('茶话间导出-{0}.{1}', { 0: new Date().toISOString().slice(0, 10), 1: ext }),
         filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
       })
       if (result.canceled || !result.filePath) return null
       try {
-        porter.export(fmt, result.filePath, exportOptions)
+        if (backup) backup.writeTo(result.filePath)
+        else porter.export(fmt, result.filePath, exportOptions)
         return result.filePath
       } catch (err) {
         console.warn('[porter] 导出失败：', err)
-        return null
+        throw new Error('export-failed')
       }
     }
   )
 
-  ipcMain.handle(IpcChannels.dataImport, async (): Promise<DataImportResult | null> => {
-    if (!mainWindow || !porter) return null
-    const result = await dialog.showOpenDialog(mainWindow, {
+  ipcMain.handle(IpcChannels.dataImport, async (event): Promise<DataImportResult | null> => {
+    if (!mainWindow || !porter) throw new Error('backup-storage-unavailable')
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+    const result = await dialog.showOpenDialog(owner, {
       title: tr('导入聊天记录备份'),
       properties: ['openFile'],
       filters: [{ name: 'Teahouse Backup', extensions: ['pantry-bak', 'zip'] }]
@@ -2511,7 +2595,10 @@ if (!gotLock) {
       return imported
     } catch (err) {
       console.warn('[porter] 导入失败：', err)
-      return null
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'EACCES' || code === 'EPERM') throw new Error('backup-permission-denied')
+      if (code === 'ENOSPC' || code === 'SQLITE_FULL') throw new Error('backup-storage-full')
+      throw new Error('backup-unreadable')
     }
   })
 
@@ -2630,7 +2717,7 @@ if (!gotLock) {
   ipcMain.handle(IpcChannels.netAddPeer, (_event, addr: unknown): boolean => {
     if (typeof addr !== 'string' || !appState) return false
     const m = ADDR_RE.exec(addr.trim())
-    if (!m) return false
+    if (!m || !isIPv4(m[1])) return false
     const host = m[1]
     const port = m[2] ? Number(m[2]) : udpPort
     if (port < 1 || port > 65535) return false
@@ -2920,21 +3007,33 @@ if (!gotLock) {
     return groups?.sendText(groupId, text, cleanMentions, replyMeta) ?? null
   })
 
-  ipcMain.handle(IpcChannels.captureStart, () => startCapture())
+  ipcMain.handle(IpcChannels.captureStart, (event, convId: unknown) => {
+    if (event.sender !== mainWindow?.webContents) return
+    return startCapture(typeof convId === 'string' ? convId : null)
+  })
 
   ipcMain.handle(IpcChannels.captureReady, (event) => {
     showCaptureWindow(event.sender)
   })
 
-  ipcMain.handle(IpcChannels.captureDone, (_event, bytes: unknown, send: unknown) => {
-    closeCaptureWindow()
-    if (!(bytes instanceof ArrayBuffer) || bytes.byteLength === 0) return
-    if (bytes.byteLength > 30 * 1024 * 1024) return
-    if (!writeClipboardImage(bytes)) return // 始终进剪贴板（随处可贴）
-    if (send === true && mainWindow) {
-      showMainWindow({ forceForeground: true })
-      mainWindow.webContents.send(IpcEvents.captured, bytes)
+  ipcMain.handle(IpcChannels.captureDone, async (event, bytes: unknown, convId: unknown) => {
+    if (!isCaptureSender(event.sender) || !(bytes instanceof ArrayBuffer)) return false
+    if (bytes.byteLength > 30 * 1024 * 1024) return false
+    if (bytes.byteLength > 0) {
+      if (!writeClipboardImage(bytes)) return false
+      if (convId !== undefined) {
+        if (typeof convId !== 'string' || !captureTargets.has(convId)) return false
+        const group = convId.startsWith('group:')
+        const id = convId.slice(group ? 6 : 7)
+        const message = await handleImageBytes(id, tr('截图.png'), bytes, undefined, (target, paths, want) =>
+          group ? files?.offerGroupPaths(target, paths, want) : files?.offerPaths(target, paths, want)
+        )
+        if (!message) return false
+        mainWindow?.webContents.send(IpcEvents.captured, message)
+      }
     }
+    closeCaptureWindow()
+    return true
   })
 
   ipcMain.handle(IpcChannels.clipboardWriteImage, (_event, bytes: unknown) => {
@@ -3039,15 +3138,22 @@ if (!gotLock) {
   })
 
   ipcMain.handle(IpcChannels.searchQuery, (_event, query: unknown) => {
-    if (typeof query !== 'string' || query.length > 64 || !search) {
+    if (typeof query !== 'string' || query.length > 128) {
       return { peers: [], messageGroups: [], files: [] }
     }
+    if (!search) throw new Error('Local search is unavailable')
     return search.query(query)
+  })
+
+  ipcMain.handle(IpcChannels.msgSearchSenders, (_event, convId: unknown) => {
+    if (convId !== null && (typeof convId !== 'string' || !convId.trim() || convId.length > 128)) return []
+    return search?.senders(convId) ?? []
   })
 
   ipcMain.handle(IpcChannels.msgSearch, (_event, options: unknown) => {
     const clean = normalizeConversationSearch(options)
-    if (!clean || !search) return []
+    if (!clean) return []
+    if (!search) throw new Error('Local search is unavailable')
     return search.conversation(clean)
   })
 

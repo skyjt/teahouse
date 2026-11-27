@@ -35,7 +35,6 @@ import {
   recallRemainingMs
 } from '../utils/recall'
 import AvatarMark from './AvatarMark.vue'
-import CompatEmoji from './CompatEmoji.vue'
 import MessageRow from './MessageRow.vue'
 import EmojiPanel from './EmojiPanel.vue'
 import GroupPanel from './GroupPanel.vue'
@@ -48,15 +47,12 @@ import PendingAttachments from './PendingAttachments.vue'
 import { usePendingAttachments, type PendingAttachment } from '../utils/pending-attachments'
 import Win7ChatEditor from './Win7ChatEditor.vue'
 import type {
-  ConversationMessageHit,
-  ConversationSearchKind,
   MessageView,
   PeerView,
   SettingsView,
   TransferView
 } from '../../../shared/ipc'
 import { IMAGE_FILE_EXTENSIONS } from '../../../shared/media'
-import { vCachedImage } from '../directives/cached-image'
 import type { PkGame } from '../../../shared/pk'
 import {
   CAPS,
@@ -67,9 +63,21 @@ import {
   TEXT_UDP_LIMIT
 } from '../../../shared/protocol'
 
-const props = withDefaults(defineProps<{ win7ImeCompat?: boolean }>(), {
+const props = withDefaults(defineProps<{ win7ImeCompat?: boolean; historyOpen?: boolean }>(), {
   win7ImeCompat: false
 })
+
+const emit = defineEmits<{ find: [] }>()
+const isMac = /Mac/i.test(navigator.platform)
+const findButton = ref<HTMLButtonElement | null>(null)
+function revealMessages(): void {
+  showMembers.value = false
+  showCabinet.value = false
+  showEmoji.value = false
+  showPk.value = false
+  closePeerProfile()
+}
+defineExpose({ revealMessages, focusFind: () => findButton.value?.focus() })
 
 const peersStore = usePeersStore()
 const chatStore = useChatStore()
@@ -173,7 +181,6 @@ function startInputResize(e: PointerEvent): void {
 
 onUnmounted(stopInputResize)
 const showEmoji = ref(false)
-const showHistorySearch = ref(false)
 const showMembers = ref(false)
 const showCabinet = ref(false)
 const showMentionPicker = ref(false)
@@ -191,7 +198,6 @@ const inputComposing = ref(false)
 const emojiScope = ref<HTMLElement | null>(null)
 const pkScope = ref<HTMLElement | null>(null)
 const peerProfileScope = ref<HTMLElement | null>(null)
-const historySearchInput = ref<HTMLInputElement | null>(null)
 const inputScrollTop = ref(0)
 const msgMenu = ref<{ x: number; y: number; msg: MessageView } | null>(null)
 const forwardMsg = ref<MessageView | null>(null)
@@ -225,35 +231,14 @@ let clipboardImageFallbackTimer: ReturnType<typeof setTimeout> | null = null
 let lastClipboardPasteHandledAt = 0
 /** 粘贴代次：mark 时递增；兜底在 await 后若代次变化则放弃发送（决议 #207） */
 let clipboardPasteEpoch = 0
-let historySearchTimer: ReturnType<typeof setTimeout> | null = null
 // 历史搜索结果点图片：单击放大 / 双击定位的延时区分（决议 #74）
-let hitClickTimer: ReturnType<typeof setTimeout> | null = null
 let peerProfileSavedTimer: ReturnType<typeof setTimeout> | null = null
-let historySearchRun = 0
 const MSG_MENU_WIDTH = 128
 const MSG_MENU_ITEM_HEIGHT = 32
 const MSG_MENU_PADDING = 10
 const MENU_MARGIN = 8
 const ACTIVE_MESSAGE_TRIM_THRESHOLD = 400
 const ACTIVE_MESSAGE_TRIM_KEEP = 300
-interface HistoryCalendarDay {
-  key: string
-  label: number
-  inMonth: boolean
-  isToday: boolean
-  isStart: boolean
-  isEnd: boolean
-  inRange: boolean
-}
-
-const historyQuery = ref('')
-const historyKind = ref<ConversationSearchKind>('all')
-const historyFrom = ref('')
-const historyTo = ref('')
-const historyCalendarMonth = ref(monthKey(new Date()))
-const historyHits = ref<ConversationMessageHit[]>([])
-const historySearching = ref(false)
-const historyBrokenImages = ref<Record<string, boolean>>({})
 const showPeerProfile = ref(false)
 const showPk = ref(false)
 const peerProfileRemark = ref('')
@@ -415,49 +400,6 @@ function refreshInputFont(): void {
   const ta = inputEl.value
   inputFont.value = ta ? fontOfStyle(getComputedStyle(ta)) : ''
 }
-const historyResultMeta = computed(() => {
-  if (historySearching.value) return tr('搜索中')
-  return tr('{0} 条结果', { 0: historyHits.value.length })
-})
-const HISTORY_WEEKDAYS = computed(() => ([tr('一'), tr('二'), tr('三'), tr('四'), tr('五'), tr('六'), tr('日')]))
-const historyDateRangeLabel = computed(() => {
-  if (historyFrom.value && historyTo.value) {
-    return tr('{0} 至 {1}', { 0: compactDateLabel(historyFrom.value), 1: compactDateLabel(historyTo.value) })
-  }
-  if (historyFrom.value) return tr('{0} 起', { 0: compactDateLabel(historyFrom.value) })
-  return tr('全部日期')
-})
-const historyCalendarTitle = computed(() => {
-  const base = monthDate(historyCalendarMonth.value)
-  return tr('{0}年{1}月', { 0: base.getFullYear(), 1: base.getMonth() + 1 })
-})
-const historyCalendarDays = computed<HistoryCalendarDay[]>(() => {
-  const base = monthDate(historyCalendarMonth.value)
-  const first = new Date(base.getFullYear(), base.getMonth(), 1)
-  const mondayOffset = (first.getDay() + 6) % 7
-  const start = new Date(first)
-  start.setDate(first.getDate() - mondayOffset)
-  const today = dateKey(new Date())
-  const from = historyFrom.value
-  const to = historyTo.value
-  return Array.from({ length: 42 }, (_, index) => {
-    const day = new Date(start)
-    day.setDate(start.getDate() + index)
-    const key = dateKey(day)
-    const isStart = key === from
-    const isEnd = key === to
-    return {
-      key,
-      label: day.getDate(),
-      inMonth: day.getMonth() === base.getMonth(),
-      isToday: key === today,
-      isStart,
-      isEnd,
-      inRange: Boolean(from && to && key > from && key < to)
-    }
-  })
-})
-
 function onDocumentPointerDown(event: MouseEvent): void {
   const target = event.target
   if (!(target instanceof Node)) return
@@ -473,7 +415,7 @@ function onEscape(event: KeyboardEvent): void {
   else if (showEmoji.value) showEmoji.value = false
   else if (showPk.value) showPk.value = false
   else if (showPeerProfile.value) closePeerProfile()
-  else if (pendingAttachments.value.length && !attachmentsSending.value) cancelAttachments()
+  else if (!props.historyOpen && pendingAttachments.value.length && !attachmentsSending.value) cancelAttachments()
   else return
   event.preventDefault()
 }
@@ -528,14 +470,12 @@ onUnmounted(() => {
   bottomKeeper = null
   document.removeEventListener('mousedown', onDocumentPointerDown)
   document.removeEventListener('selectionchange', syncMentionQuery)
-  if (historySearchTimer) clearTimeout(historySearchTimer)
   if (peerProfileSavedTimer) clearTimeout(peerProfileSavedTimer)
   if (nudgeFeedbackTimer) clearTimeout(nudgeFeedbackTimer)
   if (nudgeRetryTimer) clearInterval(nudgeRetryTimer)
   clearTablePasteHint()
   stopRecallCountdownTimer()
   if (clipboardImageFallbackTimer) clearTimeout(clipboardImageFallbackTimer)
-  historySearchRun += 1
   stopSettings?.()
   stopClipboardPaste?.()
 })
@@ -549,11 +489,9 @@ watch(
     // 顶部按钮已经灰掉、面板却还开着报错，状态自相矛盾（决议 #278）
     showCabinet.value = false
     closeMentionPicker()
-    showHistorySearch.value = false
     closePeerProfile()
     nudgeFeedback.value = null
     clearTablePasteHint()
-    resetHistorySearch()
     if (isGroup.value && id) void groupsStore.ensure(id)
   },
   { immediate: true }
@@ -588,7 +526,6 @@ watch(() => chatStore.activeConvId, (convId) => {
 }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(saveConversationDraft)
 
-watch([historyQuery, historyKind, historyFrom, historyTo], () => scheduleHistorySearch())
 
 watch(draft, (next, prev) => {
   void nextTick(syncInputMirrorScroll)
@@ -669,9 +606,16 @@ function applyConversationScroll(): void {
   const convId = chatStore.activeConvId
   const mode = chatStore.openScrollMode
   if (!convId) return
-  // 搜索跳转定位到指定历史消息（高亮居中），不属于贴底意图，避免内容撑高时被拉回底部
   if (mode === 'target') {
     stickBottom = false
+    const id = chatStore.highlightId
+    if (id) void nextTick(() => {
+      const area = scrollArea.value
+      const row = document.getElementById(`msg-${id}`)
+      if (!area || !row || !area.contains(row) || chatStore.highlightId !== id) return
+      const offset = row.getBoundingClientRect().top - area.getBoundingClientRect().top
+      applyScrollTop(area.scrollTop + offset - Math.max(0, (area.clientHeight - row.offsetHeight) / 2))
+    })
     return
   }
   void nextTick(() => {
@@ -713,6 +657,7 @@ watch(
     if (!old || !next.convId || next.convId !== old.convId || !next.id || next.id === old.id) {
       return
     }
+    if (chatStore.openScrollMode === 'target' && chatStore.highlightId) return
     const shouldStickToBottom = isNearBottom() || next.isMine
     if (!shouldStickToBottom) return
     scrollToBottom()
@@ -725,18 +670,6 @@ watch(
     }
   }
 )
-// 搜索跳转高亮：滚动到目标消息居中
-watch(
-  () => chatStore.highlightId,
-  (id) => {
-    if (!id) return
-    void nextTick(() => {
-      document.getElementById(`msg-${id}`)?.scrollIntoView({ block: 'center' })
-    })
-  },
-  { immediate: true }
-)
-
 /** 滚到顶部附近 → 向上加载更早历史，并保持视口位置不跳（F-MSG-5） */
 async function onScroll(): Promise<void> {
   const el = scrollArea.value
@@ -758,22 +691,6 @@ async function onScroll(): Promise<void> {
   loadingEarlier.value = false
 }
 
-function resetHistorySearch(): void {
-  if (historySearchTimer) {
-    clearTimeout(historySearchTimer)
-    historySearchTimer = null
-  }
-  historySearchRun += 1
-  historyQuery.value = ''
-  historyKind.value = 'all'
-  historyFrom.value = ''
-  historyTo.value = ''
-  historyCalendarMonth.value = monthKey(new Date())
-  historyHits.value = []
-  historySearching.value = false
-  historyBrokenImages.value = {}
-}
-
 function closePeerProfile(): void {
   showPeerProfile.value = false
   peerProfileSaving.value = false
@@ -788,7 +705,6 @@ function openPeerProfile(): void {
   const current = peer.value
   if (!current) return
   showEmoji.value = false
-  closeHistorySearch()
   peerProfileRemark.value = current.remark
   peerProfileSaved.value = false
   showPeerProfile.value = true
@@ -800,86 +716,6 @@ function togglePeerProfile(): void {
     return
   }
   openPeerProfile()
-}
-
-function closeHistorySearch(): void {
-  showHistorySearch.value = false
-  if (historySearchTimer) {
-    clearTimeout(historySearchTimer)
-    historySearchTimer = null
-  }
-  historySearching.value = false
-  historySearchRun += 1
-  historyBrokenImages.value = {}
-}
-
-function toggleHistorySearch(): void {
-  closePeerProfile()
-  showHistorySearch.value = !showHistorySearch.value
-  if (!showHistorySearch.value) {
-    closeHistorySearch()
-    return
-  }
-  historyCalendarMonth.value = historyFrom.value
-    ? historyFrom.value.slice(0, 7)
-    : monthKey(new Date())
-  scheduleHistorySearch()
-  void nextTick(() => historySearchInput.value?.focus())
-}
-
-function clearHistorySearch(): void {
-  resetHistorySearch()
-  scheduleHistorySearch()
-  void nextTick(() => historySearchInput.value?.focus())
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, '0')
-}
-
-function dateKey(date: Date): string {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
-}
-
-function monthKey(date: Date): string {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`
-}
-
-function monthDate(key: string): Date {
-  const matched = /^(\d{4})-(\d{2})$/.exec(key)
-  if (!matched) return new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-  return new Date(Number(matched[1]), Number(matched[2]) - 1, 1)
-}
-
-function compactDateLabel(value: string): string {
-  return value.replace(/-/g, '.')
-}
-
-function moveHistoryMonth(offset: number): void {
-  const base = monthDate(historyCalendarMonth.value)
-  base.setMonth(base.getMonth() + offset)
-  historyCalendarMonth.value = monthKey(base)
-}
-
-function pickHistoryDate(key: string): void {
-  historyCalendarMonth.value = key.slice(0, 7)
-  if (!historyFrom.value || historyTo.value) {
-    historyFrom.value = key
-    historyTo.value = ''
-    return
-  }
-  if (key < historyFrom.value) {
-    historyTo.value = historyFrom.value
-    historyFrom.value = key
-    return
-  }
-  historyTo.value = key
-}
-
-function clearHistoryDateRange(): void {
-  historyFrom.value = ''
-  historyTo.value = ''
-  historyCalendarMonth.value = monthKey(new Date())
 }
 
 function peerOrgPath(p: PeerView): string {
@@ -917,119 +753,8 @@ async function savePeerProfileRemark(): Promise<void> {
   }
 }
 
-function dayStart(value: string): number | undefined {
-  if (!value) return undefined
-  const ts = new Date(`${value}T00:00:00`).getTime()
-  return Number.isFinite(ts) ? ts : undefined
-}
-
-function dayEnd(value: string): number | undefined {
-  if (!value) return undefined
-  const ts = new Date(`${value}T23:59:59.999`).getTime()
-  return Number.isFinite(ts) ? ts : undefined
-}
-
-function scheduleHistorySearch(): void {
-  if (historySearchTimer) clearTimeout(historySearchTimer)
-  if (!showHistorySearch.value || !chatStore.activeConvId) {
-    historyHits.value = []
-    historySearching.value = false
-    return
-  }
-  historySearching.value = true
-  historySearchTimer = setTimeout(() => {
-    historySearchTimer = null
-    void runHistorySearch()
-  }, 200)
-}
-
-async function runHistorySearch(): Promise<void> {
-  const convId = chatStore.activeConvId
-  if (!convId) {
-    historyHits.value = []
-    historySearching.value = false
-    return
-  }
-  const run = ++historySearchRun
-  const hits = await window.pantry.searchMessages({
-    convId,
-    query: historyQuery.value,
-    kind: historyKind.value,
-    fromTs: dayStart(historyFrom.value),
-    toTs: dayEnd(historyTo.value),
-    limit: 50
-  })
-  if (run !== historySearchRun) return
-  historyHits.value = hits
-  historyBrokenImages.value = {}
-  historySearching.value = false
-}
-
-function historyIcon(hit: ConversationMessageHit): string {
-  if (hit.kind === 'image') return 'image'
-  if (hit.kind === 'file') return 'file'
-  if (hit.kind === 'pk') return 'pk'
-  return 'chat'
-}
-
-function openHistoryViewer(hit: ConversationMessageHit): void {
-  const transferId = hit.fileRef?.transferId ?? ''
-  if (!transferId || !historyImageTransferId(hit)) return
-  void window.pantry.openImageViewer(transferId)
-}
-
-function historySecondary(hit: ConversationMessageHit): string {
-  const who = hit.isMine ? tr('我') : peersStore.nameOf(hit.senderId)
-  return `${who} · ${listTime(hit.ts)}`
-}
-
-function historyImageTransferId(hit: ConversationMessageHit): string {
-  if (hit.kind !== 'image' || historyBrokenImages.value[hit.msgId]) return ''
-  return hit.fileRef?.transferId ?? ''
-}
-
-function markHistoryImageBroken(hit: ConversationMessageHit, event: Event): void {
-  const image = event.currentTarget as HTMLImageElement | null
-  if (
-    image?.src.startsWith('pantry-thumb:') &&
-    image.dataset.previewOriginalFallback !== 'true'
-  ) {
-    image.dataset.previewOriginalFallback = 'true'
-    image.src = `pantry-img://${hit.fileRef?.transferId ?? ''}`
-    return
-  }
-  const msgId = hit.msgId
-  historyBrokenImages.value = { ...historyBrokenImages.value, [msgId]: true }
-}
-
-async function openHistoryHit(hit: ConversationMessageHit): Promise<void> {
-  closeHistorySearch()
-  await chatStore.jumpToMessage(hit.convId, hit.seq, hit.msgId)
-}
-
-// 图片命中：单击放大看图（延时区分），双击跳转定位；其余命中单击即定位（决议 #74）
-function onHistoryHitClick(hit: ConversationMessageHit): void {
-  if (hit.kind !== 'image') {
-    void openHistoryHit(hit)
-    return
-  }
-  if (hitClickTimer) clearTimeout(hitClickTimer)
-  hitClickTimer = setTimeout(() => {
-    hitClickTimer = null
-    openHistoryViewer(hit)
-  }, 220)
-}
-
-function onHistoryHitDblClick(hit: ConversationMessageHit): void {
-  if (hitClickTimer) {
-    clearTimeout(hitClickTimer)
-    hitClickTimer = null
-  }
-  void openHistoryHit(hit)
-}
-
 function window_startCapture(): void {
-  void window.pantry.startCapture()
+  if (chatStore.activeConvId) void window.pantry.startCapture(chatStore.activeConvId)
 }
 
 async function sendStickerById(stickerId: string): Promise<void> {
@@ -1567,16 +1292,18 @@ async function grantLocalFilePaths(paths: string[]): Promise<string[]> {
 }
 
 async function sendFiles(directory: boolean): Promise<void> {
-  if (!canSendMedia.value) return
-  const paths = await window.pantry.pickFiles(directory)
-  if (paths) await chatStore.sendFilePaths(paths)
+  const recipient = chatStore.activeConv
+  if (!canSendMedia.value || !recipient) return
+  const paths = await window.pantry.pickFiles(directory, peerName.value)
+  if (paths) await chatStore.sendFilePaths(paths, recipient)
 }
 
 async function sendImage(): Promise<void> {
-  if (!canSendMedia.value) return
-  const paths = await window.pantry.pickImages()
+  const recipient = chatStore.activeConv
+  if (!canSendMedia.value || !recipient) return
+  const paths = await window.pantry.pickImages(peerName.value)
   if (!paths) return
-  for (const path of paths) await chatStore.sendImagePath(path)
+  for (const path of paths) await chatStore.sendImagePath(path, recipient)
 }
 
 interface ClipboardImagePayload {
@@ -1806,157 +1533,6 @@ async function onDrop(event: DragEvent): Promise<void> {
     <ScreenRequestDialog v-if="screenConfirmation" :name="screenConfirmation.name" :ip="screenConfirmation.ip"
       :busy="screenRequestBusy" @close="screenConfirmation = null" @confirm="sendScreenRequest(screenConfirmation.nodeId)" />
     <ForwardDialog v-if="forwardMsg" :msg="forwardMsg" @close="forwardMsg = null" />
-    <div
-      v-if="showHistorySearch"
-      class="history-overlay"
-      @mousedown.self="closeHistorySearch"
-      @keydown.esc.stop="closeHistorySearch"
-    >
-      <section
-        class="history-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="history-search-title"
-        @mousedown.stop
-      >
-        <header class="history-dialog-head">
-          <span class="history-title-block">
-            <span id="history-search-title" class="history-title">{{ tr('搜索聊天记录') }}</span>
-            <span class="history-subtitle">{{ peerName }}</span>
-          </span>
-          <button type="button" class="history-close" :aria-label="tr('关闭搜索')" @click="closeHistorySearch">
-            <PantryIcon name="x" :size="16" />
-          </button>
-        </header>
-        <div class="history-dialog-body">
-          <aside class="history-sidebar">
-            <label class="history-field">
-              <span>{{ tr('关键词') }}</span>
-              <input
-                ref="historySearchInput"
-                v-model="historyQuery"
-                class="history-input"
-                maxlength="128"
-                :placeholder="tr('搜索当前会话')"
-              />
-            </label>
-            <div class="history-field">
-              <span>{{ tr('类型') }}</span>
-              <div class="history-segments">
-                <button
-                  type="button"
-                  :class="{ selected: historyKind === 'all' }"
-                  @click="historyKind = 'all'"
-                >{{ tr('全部') }}</button>
-                <button
-                  type="button"
-                  :class="{ selected: historyKind === 'image' }"
-                  @click="historyKind = 'image'"
-                >{{ tr('图片') }}</button>
-                <button
-                  type="button"
-                  :class="{ selected: historyKind === 'file' }"
-                  @click="historyKind = 'file'"
-                >{{ tr('文件') }}</button>
-              </div>
-            </div>
-            <div class="history-field">
-              <span class="history-field-head">
-                <span>{{ tr('日期') }}</span>
-                <button
-                  v-if="historyFrom || historyTo"
-                  type="button"
-                  class="history-date-clear"
-                  @click="clearHistoryDateRange"
-                >{{ tr('清除') }}</button>
-              </span>
-              <span class="history-range-label">{{ historyDateRangeLabel }}</span>
-              <div class="history-calendar">
-                <div class="history-calendar-head">
-                  <button type="button" :aria-label="tr('上个月')" @click="moveHistoryMonth(-1)">
-                    <PantryIcon name="chevron-left" :size="14" />
-                  </button>
-                  <span>{{ historyCalendarTitle }}</span>
-                  <button type="button" :aria-label="tr('下个月')" @click="moveHistoryMonth(1)">
-                    <PantryIcon name="chevron-right" :size="14" />
-                  </button>
-                </div>
-                <div class="history-weekdays">
-                  <span v-for="day in HISTORY_WEEKDAYS" :key="day">{{ day }}</span>
-                </div>
-                <div class="history-calendar-grid">
-                  <button
-                    v-for="day in historyCalendarDays"
-                    :key="day.key"
-                    type="button"
-                    class="history-day"
-                    :class="{
-                      out: !day.inMonth,
-                      today: day.isToday,
-                      'in-range': day.inRange,
-                      'range-edge': day.isStart || day.isEnd
-                    }"
-                    @click="pickHistoryDate(day.key)"
-                  >
-                    {{ day.label }}
-                  </button>
-                </div>
-              </div>
-            </div>
-            <button type="button" class="history-clear" @click="clearHistorySearch">{{ tr('清空筛选') }}</button>
-          </aside>
-          <main class="history-results-panel">
-            <div class="history-results-head">
-              <span>{{ tr('结果') }}</span>
-              <span>{{ historyResultMeta }}</span>
-            </div>
-            <div class="history-results">
-              <div v-if="historySearching" class="history-empty">{{ tr('搜索中...') }}</div>
-              <div v-else-if="historyHits.length === 0" class="history-empty">{{ tr('没有找到相关记录') }}</div>
-              <template v-else>
-                <button
-                  v-for="hit in historyHits"
-                  :key="hit.msgId"
-                  type="button"
-                  class="history-hit"
-                  :class="`history-hit-${hit.kind}`"
-                  @click="onHistoryHitClick(hit)"
-                  @dblclick="onHistoryHitDblClick(hit)"
-                >
-                  <span v-if="hit.kind !== 'text'" class="history-hit-media">
-                    <img
-                      v-if="historyImageTransferId(hit)"
-                      v-cached-image="{ transferId: historyImageTransferId(hit) }"
-                      class="history-thumb"
-                      :alt="tr('[图片]')"
-                      loading="lazy"
-                      decoding="async"
-                      @error="markHistoryImageBroken(hit, $event)"
-                    />
-                    <span v-else class="history-kind-icon">
-                      <PantryIcon :name="historyIcon(hit)" :size="20" />
-                    </span>
-                  </span>
-                  <span class="history-hit-copy">
-                    <span v-if="hit.kind === 'file'" class="history-hit-title">{{ hit.title }}</span>
-                    <span v-else-if="hit.kind === 'text'" class="history-hit-snippet">
-                      <template
-                        v-for="(seg, segIdx) in splitEmojiText(hit.snippet)"
-                        :key="segIdx"
-                      >
-                        <CompatEmoji v-if="seg.emoji" :emoji="seg.text" />
-                        <span v-else>{{ seg.text }}</span>
-                      </template>
-                    </span>
-                    <span class="history-hit-meta">{{ historySecondary(hit) }}</span>
-                  </span>
-                </button>
-              </template>
-            </div>
-          </main>
-        </div>
-      </section>
-    </div>
     <div v-if="dragging" class="drop-mask">{{ tr('松手发送给 {0}', { 0: peerName }) }}</div>
     <header class="head">
       <div v-if="!isGroup && peer" ref="peerProfileScope" class="peer-profile-scope">
@@ -2054,22 +1630,32 @@ async function onDrop(event: DragEvent): Promise<void> {
       </template>
       <span v-if="isGroup" class="state">{{ tr('{0} 人', { 0: group?.members.length ?? 0 }) }}</span>
       <span class="head-spacer"></span>
-      <button v-if="!isGroup && peer?.caps.includes(CAPS.remoteView)" class="head-btn"
-        :disabled="!!screenDisabledReason" :title="screenDisabledReason || tr('查看屏幕')" :aria-label="screenDisabledReason || tr('查看屏幕')"
-        @click="requestScreen"><PantryIcon name="screen" :size="24" /></button>
-      <button
-        v-if="!isGroup"
-        class="head-btn"
-        :class="{ disabled: !!cabinetDisabledReason }"
-        :title="cabinetTitle"
-        :aria-disabled="!!cabinetDisabledReason"
-        @click="toggleCabinet"
-      >
-        <PantryIcon name="folder" :size="26" />
-      </button>
-      <button v-if="isGroup" class="head-btn" :title="tr('成员')" @click="showMembers = !showMembers">
-        <PantryIcon name="users" :size="17" />
-      </button>
+      <div class="head-actions">
+        <button ref="findButton" type="button" class="icon-control head-btn find-button"
+          :aria-label="tr('查找聊天记录')" :aria-expanded="historyOpen"
+          :title="tr('查找聊天记录') + (isMac ? ' (⌘F)' : ' (Ctrl+F)')" @click="emit('find')">
+          <PantryIcon name="search" size="action" />
+        </button>
+        <button v-if="!isGroup && peer?.caps.includes(CAPS.remoteView)" class="icon-control head-btn"
+          :disabled="!!screenDisabledReason" :title="screenDisabledReason || tr('查看屏幕')" :aria-label="tr('查看屏幕')"
+          :aria-description="screenDisabledReason || undefined"
+          @click="requestScreen"><PantryIcon name="screen" size="action" /></button>
+        <button
+          v-if="!isGroup"
+          class="icon-control head-btn"
+          :aria-expanded="showCabinet"
+          :aria-label="tr('文件柜')"
+          :aria-description="cabinetDisabledReason || undefined"
+          :title="cabinetTitle"
+          :aria-disabled="!!cabinetDisabledReason"
+          @click="toggleCabinet"
+        >
+          <PantryIcon name="cabinet" size="action" />
+        </button>
+        <button v-if="isGroup" class="icon-control head-btn" :title="tr('成员')" :aria-label="tr('成员')" :aria-expanded="showMembers" @click="showMembers = !showMembers">
+          <PantryIcon name="users" size="action" />
+        </button>
+      </div>
     </header>
 
     <p v-if="screenFeedback" class="screen-status" role="status">{{ screenFeedback }}</p>
@@ -2098,6 +1684,7 @@ async function onDrop(event: DragEvent): Promise<void> {
         v-for="(msg, i) in chatStore.activeMessages"
         :key="msg.id"
         :msg="msg"
+        :next-msg="chatStore.activeMessages[i + 1]"
         :prev-ts="i === 0 ? null : chatStore.activeMessages[i - 1].ts"
         :is-group-conv="isGroup"
         :sender-name="senderName(msg)"
@@ -2171,13 +1758,14 @@ async function onDrop(event: DragEvent): Promise<void> {
           />
           <span class="tool-wrap" :data-tip="tr('表情')">
             <button
-              class="tool"
+              class="icon-control tool"
               type="button"
               :aria-label="tr('表情')"
+              :aria-expanded="showEmoji"
               :disabled="!canSend"
               @click="showEmoji = !showEmoji"
             >
-              <PantryIcon name="smile" :size="26" />
+              <PantryIcon name="smile" size="action" />
             </button>
           </span>
         </span>
@@ -2204,93 +1792,79 @@ async function onDrop(event: DragEvent): Promise<void> {
           </div>
           <span class="tool-wrap" :data-tip="pkToolTip">
             <button
-              class="tool"
-              :class="{ active: showPk }"
+              class="icon-control tool"
               type="button"
               aria-label="PK"
               aria-haspopup="menu"
               :aria-expanded="showPk ? 'true' : 'false'"
               @click="showPk = !showPk"
             >
-              <PantryIcon name="pk" :size="22" />
+              <PantryIcon name="pk" size="action" />
             </button>
           </span>
         </span>
         <span v-if="!isGroup" class="tool-wrap" :data-tip="nudgeToolTip">
           <button
-            class="tool"
+            class="icon-control tool"
             type="button"
             :aria-label="tr('窗口震动')"
             :disabled="!canSendNudge"
             @click="sendNudge"
           >
-            <PantryIcon name="nudge" :size="26" />
+            <PantryIcon name="nudge" size="action" />
           </button>
         </span>
         <span class="tool-wrap" :data-tip="tr('截图')">
           <button
-            class="tool"
+            class="icon-control tool"
             type="button"
             :aria-label="tr('截图（Ctrl/Cmd+Alt+A）')"
             @click="window_startCapture"
           >
-            <PantryIcon name="scissors" :size="26" />
+            <PantryIcon name="scissors" size="action" />
           </button>
         </span>
         <span class="tool-wrap" :data-tip="tr('发送图片')">
           <button
-            class="tool"
+            class="icon-control tool"
             type="button"
             :aria-label="tr('发送图片')"
             :disabled="!canSendMedia"
             @click="sendImage"
           >
-            <PantryIcon name="image" :size="26" />
+            <PantryIcon name="image" size="action" />
           </button>
         </span>
         <span class="tool-wrap" :data-tip="tr('发送文件')">
           <button
-            class="tool"
+            class="icon-control tool"
             type="button"
             :aria-label="tr('发送文件')"
             :disabled="!canSendMedia"
             @click="sendFiles(false)"
           >
-            <PantryIcon name="file" :size="26" />
+            <PantryIcon name="file" size="action" />
           </button>
         </span>
         <span class="tool-wrap" :data-tip="tr('发送文件夹')">
           <button
-            class="tool"
+            class="icon-control tool"
             type="button"
             :aria-label="tr('发送文件夹')"
             :disabled="!canSendMedia"
             @click="sendFiles(true)"
           >
-            <PantryIcon name="folder" :size="26" />
+            <PantryIcon name="folder" size="action" />
           </button>
         </span>
-        <span v-if="isGroup && canSend && onlineGroupRecipientCount === 0" class="tool-hint">{{ tr('群成员离线，无法发送图片/文件') }}</span>
-        <span v-else-if="isGroup" class="tool-hint">{{ tr('仅在线群成员可接收图片/文件') }}</span>
-        <span v-else-if="!peerOnline" class="tool-hint">{{ tr('对方离线，无法发送图片/文件') }}</span>
         <span v-if="nudgeFeedback" class="nudge-feedback" :class="nudgeFeedback.kind">
           {{ nudgeFeedback.text }}
         </span>
         <span class="toolbar-spacer"></span>
-        <span class="history-search-scope">
-          <span class="tool-wrap" :data-tip="tr('历史搜索')">
-            <button
-              class="tool"
-              :class="{ active: showHistorySearch }"
-              type="button"
-              :aria-label="tr('历史搜索')"
-              @click="toggleHistorySearch"
-            >
-              <PantryIcon name="search" :size="26" />
-            </button>
-          </span>
-        </span>
       </div>
+      <span v-if="isGroup && canSend && onlineGroupRecipientCount === 0" class="tool-hint">{{ tr('群成员均离线，文字待成员上线后补发，图片和文件需在线接收。') }}</span>
+      <span v-else-if="isGroup" class="tool-hint">{{ tr('仅在线群成员可接收图片/文件') }}</span>
+      <span v-else-if="!peerOnline" class="tool-hint">{{ tr('对方上线后会收到文字消息。图片和文件需双方在线。') }}</span>
       <div
         v-if="showMentionPicker"
         ref="mentionPickerEl"
@@ -2428,7 +2002,6 @@ async function onDrop(event: DragEvent): Promise<void> {
 
 <style scoped>
 .screen-status { margin: 0; padding: 8px 16px; color: var(--text-2); background: var(--bg-list); font-size: var(--font-sm); border-bottom: 1px solid var(--line); }
-.head-btn:disabled { color: var(--text-3); cursor: default; }
 .chat {
   display: flex;
   flex-direction: column;
@@ -2454,7 +2027,7 @@ async function onDrop(event: DragEvent): Promise<void> {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding-bottom: 6px;
   position: relative;
 }
@@ -2531,12 +2104,6 @@ async function onDrop(event: DragEvent): Promise<void> {
 .pk-popover button:disabled {
   opacity: 0.4;
   cursor: default;
-}
-.history-search-scope {
-  position: relative;
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 auto;
 }
 .mention-picker {
   position: absolute;
@@ -2736,25 +2303,8 @@ async function onDrop(event: DragEvent): Promise<void> {
 .jump-latest:hover {
   background: var(--material-strong);
   border-color: var(--primary);
-  box-shadow: var(--highlight-edge), 0 8px 24px rgba(29, 45, 68, 0.14);
+  box-shadow: var(--shadow-float);
   opacity: 1;
-}
-.tool {
-  border: none;
-  background: transparent;
-  color: var(--text-1);
-  cursor: pointer;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: var(--radius-panel);
-  display: grid;
-  place-items: center;
-  position: relative;
-  transition:
-    color 150ms ease,
-    background 150ms ease,
-    transform 90ms ease-out;
 }
 .tool-wrap {
   position: relative;
@@ -2768,10 +2318,8 @@ async function onDrop(event: DragEvent): Promise<void> {
   bottom: calc(100% + 7px);
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, 4px);
-  transition:
-    opacity 0.22s ease,
-    transform 0.22s ease;
+  transform: translateX(-50%);
+  transition: opacity var(--motion-feedback) ease;
   z-index: 30;
 }
 .tool-wrap::before {
@@ -2782,59 +2330,32 @@ async function onDrop(event: DragEvent): Promise<void> {
 }
 .tool-wrap::after {
   content: attr(data-tip);
-  min-width: max-content;
-  max-width: 120px;
+  width: max-content;
+  max-width: 190px;
   padding: 4px 7px;
   border-radius: 7px;
   background: rgba(35, 35, 35, 0.94);
   color: #fff;
   font-size: 11px;
   line-height: 1.3;
-  white-space: nowrap;
+  text-align: center;
   box-shadow: var(--shadow-soft);
 }
-.history-search-scope .tool-wrap::after {
-  left: auto;
-  right: 0;
-  transform: translateY(4px);
-}
-.history-search-scope .tool-wrap:hover::after,
-.history-search-scope .tool-wrap:focus-within::after {
-  transform: translateY(0);
+.emoji-scope .tool-wrap::after,
+.pk-scope .tool-wrap::after {
+  left: 0;
+  transform: none;
 }
 .tool-wrap:hover::before,
 .tool-wrap:hover::after,
 .tool-wrap:focus-within::before,
 .tool-wrap:focus-within::after {
   opacity: 1;
-  transform: translate(-50%, 0);
-  transition-delay: 0.45s;
-}
-.tool:hover:not(:disabled) {
-  background: var(--surface-hover);
-  color: var(--text-1);
-}
-.tool:active:not(:disabled) {
-  transform: scale(0.96);
-}
-.tool:focus-visible {
-  outline: 2px solid rgba(var(--primary-rgb), 0.35);
-  outline-offset: 1px;
-}
-.tool.active {
-  color: var(--primary);
-  background: var(--surface-selected);
-  box-shadow: var(--highlight-edge);
-}
-.tool:disabled {
-  opacity: 0.35;
-  cursor: default;
+  transition-delay: 400ms;
 }
 .tool-hint {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: block;
+  line-height: 1.35;
   font-size: 11px;
   color: var(--text-3);
 }
@@ -2850,387 +2371,6 @@ async function onDrop(event: DragEvent): Promise<void> {
 .nudge-feedback.warn {
   color: var(--danger);
 }
-.history-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 18;
-  display: grid;
-  place-items: center;
-  padding: 28px;
-  background: rgba(0, 0, 0, 0.16);
-}
-.history-dialog {
-  width: min(680px, 100%);
-  height: min(500px, 100%);
-  /* 不再用 min-height 兜底，矮窗（Win7 VM）下会撑破遮罩 padding 导致末行被裁（决议 #74） */
-  max-height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-window);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
-  overflow: hidden;
-}
-.history-dialog-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--line);
-}
-.history-title-block {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.history-title {
-  color: var(--text-1);
-  font-size: 15px;
-  font-weight: 600;
-}
-.history-subtitle {
-  color: var(--text-3);
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.history-close {
-  flex: 0 0 auto;
-  width: 30px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: var(--text-2);
-  border-radius: 4px;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-}
-.history-close:hover {
-  background: var(--line);
-}
-.history-dialog-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 218px minmax(0, 1fr);
-}
-.history-sidebar {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 14px;
-  background: var(--bg-list);
-  border-right: 1px solid var(--line);
-}
-.history-field {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  color: var(--text-3);
-  font-size: 12px;
-}
-.history-field-head {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.history-date-clear {
-  border: none;
-  background: transparent;
-  color: var(--text-3);
-  padding: 0 2px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.history-date-clear:hover {
-  color: var(--primary);
-}
-.history-input {
-  width: 100%;
-  height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  outline: none;
-  padding: 0 10px;
-  background: var(--bg-window);
-  color: var(--text-1);
-  font: inherit;
-  font-size: 13px;
-}
-.history-input:focus {
-  border-color: rgba(var(--primary-rgb), 0.55);
-  background: var(--bg-window);
-}
-.history-segments {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  align-items: center;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--bg-window);
-}
-.history-segments button {
-  height: 32px;
-  border: none;
-  border-right: 1px solid var(--line);
-  background: transparent;
-  color: var(--text-2);
-  font-size: 12px;
-  cursor: pointer;
-}
-.history-segments button:last-child {
-  border-right: none;
-}
-.history-segments button.selected {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.1);
-}
-.history-clear {
-  width: 100%;
-  height: 32px;
-  margin-top: auto;
-  border: 1px solid var(--line);
-  background: var(--bg-window);
-  color: var(--text-2);
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.history-clear:hover {
-  color: var(--primary);
-  border-color: rgba(var(--primary-rgb), 0.35);
-}
-.history-range-label {
-  width: 100%;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--bg-window);
-  color: var(--text-1);
-  font-size: 12px;
-  padding: 0 8px;
-}
-.history-calendar {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--bg-window);
-  padding: 7px;
-}
-.history-calendar-head {
-  height: 26px;
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 26px;
-  align-items: center;
-  gap: 4px;
-}
-.history-calendar-head span {
-  text-align: center;
-  color: var(--text-1);
-  font-size: 12px;
-  font-weight: 600;
-}
-.history-calendar-head button {
-  width: 26px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-2);
-  border-radius: 4px;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-}
-.history-calendar-head button:hover {
-  background: var(--line);
-  color: var(--primary);
-}
-.history-weekdays,
-.history-calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-}
-.history-weekdays {
-  margin: 5px 0 3px;
-}
-.history-weekdays span {
-  height: 18px;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-  font-size: 11px;
-}
-.history-calendar-grid {
-  gap: 2px;
-}
-.history-day {
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-2);
-  border-radius: 4px;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.history-day.out {
-  color: var(--text-3);
-  opacity: 0.55;
-}
-.history-day.today:not(.range-edge) {
-  box-shadow: inset 0 0 0 1px rgba(var(--primary-rgb), 0.38);
-  color: var(--primary);
-}
-.history-day.in-range {
-  background: rgba(var(--primary-rgb), 0.1);
-  color: var(--primary);
-}
-.history-day.range-edge {
-  background: var(--primary);
-  color: var(--on-primary);
-  opacity: 1;
-}
-.history-day:hover:not(.range-edge) {
-  background: var(--line);
-  color: var(--primary);
-}
-.history-results-panel {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-window);
-}
-.history-results-head {
-  flex: 0 0 auto;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--line);
-  color: var(--text-1);
-  font-size: 13px;
-  font-weight: 600;
-}
-.history-results-head span:last-child {
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 400;
-}
-.history-results {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  /* 末尾多留白：Win7/Chrome108 下 flex+overflow 容器最后一项易被裁（决议 #74） */
-  padding: 8px 8px 16px;
-}
-.history-empty {
-  height: 100%;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-  font-size: 12px;
-}
-.history-hit {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: var(--text-1);
-  padding: 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-}
-.history-hit-image {
-  grid-template-columns: 72px minmax(0, 1fr);
-  min-height: 88px;
-}
-/* 文本命中：去掉媒体列，摘要直接当主体（决议 #74） */
-.history-hit-text {
-  grid-template-columns: minmax(0, 1fr);
-}
-.history-hit + .history-hit {
-  margin-top: 4px;
-}
-.history-hit:hover {
-  background: var(--line);
-}
-.history-hit-media {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  border-radius: 6px;
-  background: var(--bg-list);
-  color: var(--text-2);
-}
-.history-hit-image .history-hit-media,
-.history-thumb {
-  width: 72px;
-  height: 72px;
-}
-.history-thumb {
-  display: block;
-  object-fit: cover;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--bg-list);
-}
-.history-kind-icon {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-}
-.history-hit-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.history-hit-title {
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.history-hit-snippet {
-  min-width: 0;
-  color: var(--text-1);
-  font-size: 13px;
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-.history-hit-meta {
-  color: var(--text-3);
-  font-size: 11px;
-}
 .head {
   /* 沉浸式（决议 #49）：头部背景直通窗口顶，内容压在 32px 拖拽带下方。
      这里不许设 no-drag —— no-drag 矩形会从系统 drag region 中挖洞，
@@ -3240,7 +2380,7 @@ async function onDrop(event: DragEvent): Promise<void> {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 32px 20px 0;
+  padding: 32px var(--pane-inset) 0;
   background: var(--material-bar);
   border-bottom: 1px solid var(--line);
   box-shadow: none;
@@ -3283,8 +2423,7 @@ async function onDrop(event: DragEvent): Promise<void> {
   background: transparent;
   color: inherit;
   border-radius: var(--radius-panel);
-  padding: 5px 10px 5px 5px;
-  margin-left: -4px;
+  padding: 4px 4px 4px 0;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -3293,17 +2432,17 @@ async function onDrop(event: DragEvent): Promise<void> {
   cursor: pointer;
 }
 .head-avatar {
-  width: 40px;
-  height: 40px;
+  width: var(--avatar-heading);
+  height: var(--avatar-heading);
   border-radius: 50%;
-  flex: 0 0 40px;
+  flex: 0 0 var(--avatar-heading);
   color: #fff;
   font-size: 17px;
 }
 .group-head-avatar {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: var(--avatar-heading);
+  height: var(--avatar-heading);
+  flex: 0 0 var(--avatar-heading);
 }
 .title-text {
   min-width: 0;
@@ -3517,6 +2656,7 @@ async function onDrop(event: DragEvent): Promise<void> {
   position: relative;
 }
 .msgs {
+  overscroll-behavior: contain;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -3531,41 +2671,7 @@ async function onDrop(event: DragEvent): Promise<void> {
 .head-spacer {
   flex: 1;
 }
-.head-btn {
-  border: none;
-  background: transparent;
-  color: var(--text-1);
-  cursor: pointer;
-  width: 34px;
-  height: 32px;
-  padding: 0;
-  border-radius: var(--radius-panel);
-  display: grid;
-  place-items: center;
-  transition:
-    color 150ms ease,
-    background 150ms ease,
-    transform 90ms ease-out;
-}
-.head-btn:hover {
-  background: var(--surface-hover);
-  color: var(--text-1);
-}
-.head-btn.disabled {
-  /* 灰显但保留 hover 提示，让用户能读到不可用的原因（决议 #17/#273） */
-  color: var(--text-3);
-  cursor: default;
-}
-.head-btn.disabled:hover {
-  background: transparent;
-  color: var(--text-3);
-}
-.head-btn.disabled:active {
-  transform: none;
-}
-.head-btn:active {
-  transform: scale(0.96);
-}
+.head-actions { display: flex; align-items: center; gap: 4px; flex: none; }
 .sep {
   text-align: center;
   font-size: 11px;
@@ -3651,6 +2757,7 @@ async function onDrop(event: DragEvent): Promise<void> {
   touch-action: none;
   user-select: none;
 }
+.input-area:focus-within { border-top-color: var(--primary-border); }
 .input-shell {
   position: relative;
   border-radius: var(--radius-panel);
@@ -3784,18 +2891,16 @@ async function onDrop(event: DragEvent): Promise<void> {
   cursor: default;
 }
 @media (prefers-reduced-motion: reduce) {
-  .tool,
+  .tool-wrap::before,
+  .tool-wrap::after,
   .pk-popover button,
   .title-button .title,
-  .head-btn,
   .profile-save,
   .send,
   .jump-latest {
     transition: none;
   }
-  .tool:active:not(:disabled),
   .pk-popover button:active:not(:disabled),
-  .head-btn:active,
   .profile-save:active:not(:disabled),
   .send:active:not(:disabled),
   .msg-menu button:active:not(:disabled),

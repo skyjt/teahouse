@@ -178,8 +178,8 @@ onBeforeUnmount(() => {
             <h2 id="avatar-crop-title">{{ title || tr('调整头像') }}</h2>
             <p>{{ tr('拖动图片并缩放，让头像落在圆形区域内。') }}</p>
           </div>
-          <button class="icon-button" :title="tr('关闭')" :disabled="busy" @click="requestClose">
-            <PantryIcon name="x" :size="16" />
+          <button class="icon-control compact-icon" :title="tr('关闭')" :disabled="busy" @click="requestClose">
+            <PantryIcon name="x" size="compact" />
           </button>
         </header>
 
@@ -202,8 +202,8 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="zoom-row">
-          <button :title="tr('缩小')" :disabled="busy || zoom <= 1" @click="setZoom(zoom / ZOOM_STEP)">
-            <PantryIcon name="minus" :size="14" />
+          <button class="icon-control compact-icon" :title="tr('缩小')" :disabled="busy || zoom <= 1" @click="setZoom(zoom / ZOOM_STEP)">
+            <PantryIcon name="minus" size="compact" />
           </button>
           <input
             :value="Math.round(zoom * 100)"
@@ -215,8 +215,8 @@ onBeforeUnmount(() => {
             :disabled="busy || maxZoom <= 1"
             @input="setZoom(Number(($event.target as HTMLInputElement).value) / 100)"
           />
-          <button :title="tr('放大')" :disabled="busy || zoom >= maxZoom" @click="setZoom(zoom * ZOOM_STEP)">
-            <PantryIcon name="plus" :size="14" />
+          <button class="icon-control compact-icon" :title="tr('放大')" :disabled="busy || zoom >= maxZoom" @click="setZoom(zoom * ZOOM_STEP)">
+            <PantryIcon name="plus" size="compact" />
           </button>
           <button class="reset" :disabled="busy" @click="reset">{{ tr('重置') }}</button>
         </div>
@@ -241,12 +241,13 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(17, 24, 39, 0.46);
+  background: var(--scrim);
 }
 .crop-dialog {
   width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--bg-window);
@@ -277,20 +278,6 @@ header p {
   margin-top: 4px;
   color: var(--text-3);
   font-size: 12px;
-}
-.icon-button,
-.zoom-row button {
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-panel);
-  background: var(--bg-window);
-  color: var(--text-2);
-  cursor: pointer;
-}
-.icon-button {
-  width: 30px;
-  height: 30px;
 }
 .crop-stage {
   position: relative;
@@ -332,13 +319,13 @@ header p {
   gap: 8px;
   margin-top: 12px;
 }
-.zoom-row button {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-}
-.zoom-row button.reset {
-  width: auto;
+.zoom-row .reset {
+  height: var(--control-square-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg-window);
+  color: var(--text-2);
+  cursor: pointer;
   padding: 0 8px;
   font-size: 12px;
 }

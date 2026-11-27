@@ -77,6 +77,7 @@ export const IpcChannels = {
   imgThumbnailCache: 'img:thumbnail-cache',
   searchQuery: 'search:query',
   msgSearch: 'msg:search',
+  msgSearchSenders: 'msg:search-senders',
   msgContext: 'msg:context',
   msgGet: 'msg:get',
   settingsSaveApp: 'settings:save-app',
@@ -84,6 +85,7 @@ export const IpcChannels = {
   shareMySetRoot: 'share:my-set-root',
   shareMySetMode: 'share:my-set-mode',
   shareMyReveal: 'share:my-reveal',
+  shareMyList: 'share:my-list',
   shareGrantList: 'share:grant-list',
   shareGrantSet: 'share:grant-set',
   /** 对方的文件柜（决议 #273/#275）：列目录与下载 */
@@ -155,7 +157,7 @@ export const IpcEvents = {
   groupUpdated: 'group:updated',
   /** 截图框选窗初始化（本地 PNG 字节） */
   captureInit: 'capture:init',
-  /** 截图完成且选择"发送"→ 主窗（发到当前会话） */
+  /** 截图发送成功后将消息加入主窗的会话缓存。 */
   captured: 'ui:captured',
   /** 内置截图无法继续时给主窗的可见提示（系统通知不可用时也不能静默） */
   captureFailed: 'capture:failed',
@@ -199,6 +201,13 @@ export interface AppInfo {
   nodeId: string
   /** 当前用于局域网身份展示的本机 IPv4。 */
   localIp: string
+}
+
+/** 截图开始时固定的可选收件人和聊天入口。 */
+export interface CaptureInit {
+  pngBytes: ArrayBuffer
+  pinnedConvId: string | null
+  recipients: Array<{ convId: string; name: string }>
 }
 
 /** 通讯录条目（renderer 视图模型，由主进程的 PeerRecord 投影而来） */
@@ -523,10 +532,14 @@ export interface SearchResult {
   files: FileHit[]
 }
 
-export type ConversationSearchKind = 'all' | 'image' | 'file'
+export type ConversationSearchKind = 'all' | 'message' | 'file' | 'image'
 
 export interface ConversationSearchOptions {
-  convId: string
+  /** null explicitly searches all local conversations. */
+  convId: string | null
+  senderId?: string
+  fromMe?: boolean
+  before?: { ts: number; seq: number; msgId: string }
   query: string
   kind: ConversationSearchKind
   fromTs?: number
@@ -652,6 +665,11 @@ export const SHARE_FAIL_TEXT: Record<ShareBrowseFailReason, string> = {
   timeout: '对方没有响应，稍后重试'
 }
 
+export interface OwnShareListing {
+  entries: ShareEntry[]
+  truncated: boolean
+}
+
 export type ShareBrowseResult =
   | {
       ok: true
@@ -700,6 +718,8 @@ export type ShareDownloadResult =
  */
 export interface ShareRecentUploadView {
   transferId: string
+  /** 上传文件、文件夹或一批文件的显示名。旧记录可能没有名称。 */
+  fileName: string
   /** 上传者 nodeId */
   nodeId: string
   /** 上传者显示名：本地备注优先，其次昵称 */
@@ -818,8 +838,8 @@ export interface PantryApi {
   /** 按需探活（F-DISC-8）；返回是否已发出 */
   probePeer(nodeId: string): Promise<boolean>
   listConversations(): Promise<ConversationView[]>
-  /** 打开（或创建）与某节点的会话：清未读 + 触发探活；存储不可用时返回 null */
-  openConversation(peerNodeId: string): Promise<ConversationView | null>
+  /** 打开或创建会话，单聊同时探活；消息面板可见后再置读。 */
+  openConversation(targetId: string, type?: ConversationView['type']): Promise<ConversationView | null>
   markRead(convId: string): Promise<void>
   pinConversation(convId: string, pinned: boolean): Promise<void>
   muteConversation(convId: string, muted: boolean): Promise<void>
@@ -843,9 +863,9 @@ export interface PantryApi {
   /** 弹系统目录选择框；取消返回 null */
   pickDirectory(): Promise<string | null>
   /** 弹文件/文件夹选择框（发送用）；取消返回 null */
-  pickFiles(directory: boolean): Promise<string[] | null>
+  pickFiles(directory: boolean, recipient: string): Promise<string[] | null>
   /** 弹图片多选框；仅返回受支持图片路径，取消返回 null。 */
-  pickImages(): Promise<string[] | null>
+  pickImages(recipient: string): Promise<string[] | null>
   /** 弹图片多选框并签发表情导入专用的一次性路径授权。 */
   pickStickerImages(): Promise<string[] | null>
   /** 授权用户拖拽 / 粘贴产生的本地文件路径用于一次发送。 */
@@ -904,6 +924,7 @@ export interface PantryApi {
   /** 全局搜索（防抖在渲染层做） */
   search(query: string): Promise<SearchResult>
   /** 当前会话历史搜索：关键词 + 图片/文件/日期筛选 */
+  searchSenders(convId: string | null): Promise<string[]>
   searchMessages(options: ConversationSearchOptions): Promise<ConversationMessageHit[]>
   /** 搜索跳转：取目标 seq 前后窗口（按时间升序），用于会话内定位 */
   getMessageContext(convId: string, seq: number): Promise<MessageView[]>
@@ -915,8 +936,10 @@ export interface PantryApi {
   setShareRoot(clear?: boolean): Promise<ShareRootPickResult>
   /** 我的文件柜：切换默认权限档 */
   setShareMode(mode: ShareMode): Promise<SettingsView>
-  /** 我的文件柜：在系统文件管理器中打开共享根 */
-  revealShareRoot(): Promise<boolean>
+  /** 与访客使用相同的列举规则，只接受当前本机共享根下的相对路径。 */
+  listOwnShareFolder(path: string): Promise<OwnShareListing | null>
+  /** 在系统文件管理器中打开目录或定位文件。省略相对路径表示共享根。 */
+  revealShareRoot(path?: string): Promise<boolean>
   /** 按联系人例外列表（含显示名与在线状态） */
   listShareGrants(): Promise<ShareGrantView[]>
   /** 写入例外；mode 传 null 表示恢复"跟随默认档" */
@@ -977,12 +1000,12 @@ export interface PantryApi {
   getGroup(groupId: string): Promise<GroupView | null>
   listGroups(): Promise<GroupView[]>
   sendGroupText(groupId: string, text: string, mentions?: string[], replyTo?: string): Promise<MessageView | null>
-  /** 触发截图（等价全局快捷键） */
-  startCapture(): Promise<void>
+  /** 聊天工具栏绑定会话，全局快捷键默认复制。 */
+  startCapture(convId?: string): Promise<void>
   /** 截图窗：桌面位图已解码并完成首帧布局 */
   captureReady(): Promise<void>
-  /** 截图框选完成：写剪贴板；send=true 时同时回推主窗发送到当前会话 */
-  captureDone(bytes: ArrayBuffer, send: boolean): Promise<void>
+  /** 复制或发送给本次截图明确选择的会话。 */
+  captureDone(bytes: ArrayBuffer, convId?: string): Promise<boolean>
   /** 写系统图片剪贴板；表情 / 图片消息复制用 */
   writeImageToClipboard(bytes: ArrayBuffer): Promise<boolean>
   /** 读系统图片剪贴板 PNG；输入框 Command+V 兜底用 */
@@ -1010,9 +1033,9 @@ export interface PantryApi {
   onNetState(listener: (state: NetState) => void): () => void
   onGroupUpdated(listener: (group: GroupView) => void): () => void
   /** 截图窗：接收本地 PNG 字节 */
-  onCaptureInit(listener: (pngBytes: ArrayBuffer) => void): () => void
-  /** 主窗：截图选择"发送"后的字节流 */
-  onCaptured(listener: (bytes: ArrayBuffer) => void): () => void
+  onCaptureInit(listener: (init: CaptureInit) => void): () => void
+  /** 主窗：已发送的截图消息。 */
+  onCaptured(listener: (message: MessageView) => void): () => void
   /** 主窗：截图未能启动时显示可见反馈。 */
   onCaptureFailed(listener: (notice: CaptureFailureNotice) => void): () => void
   /** 点通知/托盘后主进程要求打开某会话 */

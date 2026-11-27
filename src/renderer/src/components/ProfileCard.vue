@@ -191,9 +191,11 @@ function lastSeenLabel(peer: PeerView): string {
 
 <style scoped>
 .profile-page {
+  container-type: inline-size;
   height: 100%;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--bg-window);
   display: flex;
   justify-content: center;
@@ -357,7 +359,7 @@ h2 {
 .save-state.error {
   color: var(--danger);
 }
-@media (max-width: 760px) {
+@container (max-width: 480px) {
   .profile-sheet {
     width: calc(100% - 32px);
     padding: 32px 0;
@@ -365,6 +367,7 @@ h2 {
   .profile-hero {
     align-items: flex-start;
   }
+  .identity-row h2 { max-width: 100%; }
   .identity-row {
     flex-direction: column;
     align-items: flex-start;

@@ -718,7 +718,7 @@ try {
   const exportAvatarDir = join(dir, 'avatars-export')
   mkdirSync(exportAvatarDir, { recursive: true })
   writeFileSync(join(exportAvatarDir, `${avatarHash}.webp`), avatarBytes)
-  new PorterService(
+  const exporter = new PorterService(
     db,
     'node-self',
     '我',
@@ -726,10 +726,34 @@ try {
     [dir],
     exportAvatarDir,
     avatarHash
-  ).export(
-    'backup',
-    backupPath
   )
+  exporter.export('backup', backupPath)
+  const scoped = exporter.prepareBackup({ convId, fromTs: 5000, toTs: 5000 })
+  const scopedPath = join(dir, 'selected.pantry-bak')
+  scoped.writeTo(scopedPath)
+  const selected = readZip(scopedPath)
+  const scopedManifest = JSON.parse(selected.get('manifest.json')!.toString())
+  assert.deepEqual(scopedManifest.counts, scoped.counts)
+  assert.equal(scopedManifest.avatarHash, undefined)
+  assert.equal(scoped.counts.conversations, 1)
+  assert.equal(scoped.counts.groups, 0)
+  assert.equal(scoped.counts.stickers, 0)
+  assert.ok(!selected.get('peers.jsonl')!.toString().includes('node-alice'))
+  const selectedIds = new Set(selected.get('messages.jsonl')!.toString().trim().split('\n').map((line) => JSON.parse(line).id))
+  const selectedTransfers = selected.get('transfers.jsonl')!.toString().trim().split('\n').map((line) => JSON.parse(line))
+  assert.ok(selectedTransfers.some((row) => row.transferId === 't-img'))
+  assert.ok(selectedTransfers.every((row) => selectedIds.has(row.msgId)))
+  assert.ok(selectedTransfers.every((row) => JSON.parse(row.files).savedPath === undefined))
+  assert.ok(selected.has('media/transfers/t-img.webp'))
+  assert.ok(![...selected.keys()].some((key) => key.startsWith('media/stickers/')))
+  const scopedGroupPath = join(dir, 'selected-group.pantry-bak')
+  exporter.export('backup', scopedGroupPath, { convId: 'group:g-1' })
+  const scopedGroup = JSON.parse(readZip(scopedGroupPath).get('groups.jsonl')!.toString())
+  assert.equal(scopedGroup.groupId, 'g-1')
+  assert.equal(scopedGroup.adminSecretHash, undefined)
+  assert.equal(scopedGroup.adminHint, undefined)
+  const emptyRange = exporter.prepareBackup({ fromTs: 0, toTs: 0 }).counts
+  assert.equal(emptyRange.messages + emptyRange.conversations + emptyRange.peers + emptyRange.groups + emptyRange.media, 0)
   const exportedGroups = readZip(backupPath).get('groups.jsonl')?.toString('utf8') ?? ''
   const exportedGroup = exportedGroups
     .split('\n')

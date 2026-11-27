@@ -42,7 +42,7 @@ const broken = ref<Record<number, boolean>>({})
 .attachment-title { display: flex; align-items: center; gap: 7px; font-size: var(--font-sm); font-weight: 600; color: var(--text-1); }
 .attachment-count { padding: 1px 7px; border-radius: var(--radius-pill); background: var(--primary-weak); color: var(--primary); font-size: var(--font-xs); font-variant-numeric: tabular-nums; }
 .cancel-attachments { border: 0; background: transparent; color: var(--text-2); font-size: var(--font-xs); padding: 5px 4px; cursor: pointer; border-radius: var(--radius-control); }
-.attachment-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr)); gap: 8px; list-style: none; padding: 0; margin: 0; max-height: 176px; overflow-y: auto; }
+.attachment-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr)); gap: 8px; list-style: none; padding: 0; margin: 0; max-height: 176px; overflow-y: auto; overscroll-behavior: contain; }
 .attachment-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--material-strong); }
 .attachment-preview { width: 72px; height: 64px; flex: 0 0 72px; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-control); background: var(--bg-list); }
 .attachment-preview img { width: 100%; height: 100%; object-fit: contain; }

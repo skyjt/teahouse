@@ -108,7 +108,9 @@ function confirmRemove(): void {
 
 <template>
   <div class="pane" @click="menu = null">
-    <div v-if="chatStore.visibleConvs.length === 0" class="placeholder">{{ tr('还没有会话') }}<br />{{ tr('去「通讯录」找个人开聊') }}</div>
+    <div v-if="chatStore.visibleConvs.length === 0" class="placeholder">
+      <p>{{ tr('还没有会话') }}</p>
+    </div>
     <ul v-else class="conv-list" :aria-label="tr('最近会话')">
       <li v-for="conv in chatStore.visibleConvs" :key="conv.id">
         <button
@@ -205,6 +207,7 @@ function confirmRemove(): void {
 .conv-list {
   list-style: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 1;
   padding: 0 0 10px;
 }
@@ -218,15 +221,12 @@ function confirmRemove(): void {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 66px;
+  min-height: 60px;
   margin: 0;
-  padding: 12px 14px;
+  padding: 9px 14px;
   border-radius: 0;
   cursor: pointer;
-  transition:
-    background 150ms ease,
-    box-shadow 150ms ease,
-    transform 90ms ease-out;
+  transition: background-color var(--motion-feedback) ease;
 }
 /* 置顶会话淡灰底（决议 #126）：与普通会话区分；hover / 选中态在其后定义，仍能覆盖 */
 .conv.pinned {
@@ -264,12 +264,12 @@ function confirmRemove(): void {
   outline: 2px solid var(--primary);
   outline-offset: -2px;
 }
-.conv:active {
-  transform: scale(0.985);
+.conv:active, .conv.active:active {
+  background: var(--surface-pressed);
 }
 .conv-avatar {
-  width: 38px;
-  height: 38px;
+  width: var(--avatar-list);
+  height: var(--avatar-list);
   border-radius: 50%;
   background: transparent;
   color: var(--on-primary);
@@ -385,7 +385,7 @@ function confirmRemove(): void {
 .confirm-mask {
   position: fixed;
   inset: 0;
-  background: rgba(22, 34, 52, 0.26);
+  background: var(--scrim);
 
   display: grid;
   place-items: center;
@@ -453,7 +453,6 @@ function confirmRemove(): void {
   .confirm-actions button {
     transition: none;
   }
-  .conv:active,
   .confirm-actions button:active {
     transform: none;
   }

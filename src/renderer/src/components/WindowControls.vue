@@ -103,8 +103,9 @@ function close(): void {
   place-items: center;
   padding: 0;
 }
+.ctrl:focus-visible { outline-offset: -3px; }
 .ctrl:hover {
-  background: var(--line);
+  background: var(--surface-hover);
   color: var(--text-1);
 }
 .ctrl.close:hover {

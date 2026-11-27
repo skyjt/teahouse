@@ -198,8 +198,9 @@ const showRetry = computed(
     (transfer.value.status === 'failed' || transfer.value.status === 'canceled') &&
     transfer.value.retryable === true
 )
+const retryElsewhere = computed(() => transfer.value?.failureReason === 'write-error')
 const retryLabel = computed(() =>
-  transfer.value?.status === 'canceled' ? tr('重新下载') : tr('继续')
+  retryElsewhere.value ? tr('换个位置接收') : transfer.value?.status === 'canceled' ? tr('重新下载') : tr('继续')
 )
 const showBadge = computed(
   () => !showRecvActions.value && !showCancel.value && !showReveal.value && !showRetry.value
@@ -252,8 +253,8 @@ function requestDirect(): void {
         <div class="fill" :style="{ width: `${percent}%` }"></div>
       </div>
       <div v-if="multiOut" class="recv">
-        <span class="recv-count">{{ tr('已接收 {0}/{1}', { 0: doneCount, 1: totalCount }) }}</span>
-        <span class="recv-pop" role="tooltip">
+        <span class="recv-count" tabindex="0" :aria-describedby="`recipients-${msg.id}`">{{ tr('已接收 {0}/{1}', { 0: doneCount, 1: totalCount }) }}</span>
+        <span class="recv-pop" role="tooltip" :id="`recipients-${msg.id}`">
           <template v-if="receivedNames.length">{{ receivedNames.join('、') }}</template>
           <template v-else>{{ tr('还没有人接收') }}</template>
         </span>
@@ -304,7 +305,7 @@ function requestDirect(): void {
       <button v-else-if="showReveal" class="act reveal" @click="transfers.reveal(ref_.transferId)">
         {{ tr('打开所在文件夹') }}<PantryIcon name="folder" :size="20" />
       </button>
-      <button v-else-if="showRetry" class="act primary" @click="transfers.accept(ref_.transferId)">
+      <button v-else-if="showRetry" class="act primary" @click="transfers.accept(ref_.transferId, retryElsewhere)">
         {{ retryLabel }}
       </button>
       <span v-else-if="showBadge" class="badge" :class="badgeTone">
@@ -415,6 +416,7 @@ function requestDirect(): void {
   margin-top: 6px;
 }
 .recv-count {
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 600;
   color: var(--primary);
@@ -432,13 +434,14 @@ function requestDirect(): void {
   background: var(--bg-window);
   border: 1px solid var(--line);
   border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--shadow-float);
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-1);
   white-space: normal;
   z-index: 8;
 }
+.recv:focus-within .recv-pop,
 .recv:hover .recv-pop {
   display: block;
 }
@@ -462,25 +465,23 @@ function requestDirect(): void {
   gap: 4px;
   padding: 0 2px;
 }
-.act {
-  border: 1px solid var(--line);
-  background: transparent;
-  border-radius: 6px;
-  min-height: 26px;
-  padding: 0 9px;
+.act, .icon-act {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background-color var(--motion-feedback) ease, border-color var(--motion-feedback) ease;
+}
+.act {
+  min-height: 26px;
+  padding: 0 9px;
   font-size: 12px;
   line-height: 24px;
-  cursor: pointer;
-  color: var(--text-2);
   white-space: nowrap;
-  transition:
-    background 0.15s,
-    border-color 0.15s,
-    color 0.15s,
-    transform 0.15s;
 }
 .act.primary {
   background: var(--primary);
@@ -488,7 +489,7 @@ function requestDirect(): void {
   color: var(--on-primary);
   font-weight: 600;
 }
-.act.danger {
+.act.danger, .icon-act.danger {
   color: var(--danger);
 }
 .direct-act {
@@ -500,22 +501,6 @@ function requestDirect(): void {
 .icon-act {
   width: 26px;
   height: 26px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: transparent;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-2);
-  transition:
-    background 0.15s,
-    border-color 0.15s,
-    color 0.15s,
-    transform 0.15s;
-}
-.icon-act.danger {
-  color: var(--danger);
 }
 .act:not(.primary):hover,
 .icon-act:hover {
@@ -546,5 +531,9 @@ function requestDirect(): void {
 }
 .badge.muted {
   color: var(--text-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fill, .act, .icon-act { transition: none; }
+  .act:active:not(:disabled), .icon-act:active { transform: none; }
 }
 </style>

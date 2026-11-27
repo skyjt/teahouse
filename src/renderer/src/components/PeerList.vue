@@ -4,10 +4,13 @@ import { computed, ref } from 'vue'
 import type { PeerView } from '../../../shared/ipc'
 import { usePeersStore } from '../stores/peers'
 import AvatarMark from './AvatarMark.vue'
+import PantryIcon from './PantryIcon.vue'
 
 // 通讯录三级折叠树（F-DISC-4 / ui-design §4）：公司 ▸ 部门 ▸ 团队 ▸ 成员。
 // 字段空缺逐级跳过，全空归"未分组"；组内在线优先（registry 已排序）。
 
+const listHeading = ref<HTMLElement | null>(null)
+defineExpose({ focusHeading: () => listHeading.value?.focus() })
 const peersStore = usePeersStore()
 const emit = defineEmits<{ select: [peer: PeerView]; chat: [nodeId: string] }>()
 const collapsed = ref(new Set<string>())
@@ -121,10 +124,9 @@ function displayName(peer: PeerView): string {
 
 <template>
   <div class="pane">
-    <div class="list-head">{{ tr('网内节点 {0} · 在线 {1}', { 0: peersStore.peers.length, 1: peersStore.onlineCount }) }}
-    </div>
-    <div v-if="peersStore.peers.length === 0" class="placeholder">{{ tr('正在发现同网段节点…') }}</div>
-    <ul v-else class="tree">
+    <h2 ref="listHeading" class="list-head" tabindex="-1">{{ tr('网内节点 {0} · 在线 {1}', { 0: peersStore.peers.length, 1: peersStore.onlineCount }) }}
+    </h2>
+    <ul v-if="peersStore.peers.length" class="tree">
       <li v-for="row in rows" :key="row.key">
         <button
           type="button"
@@ -137,7 +139,7 @@ function displayName(peer: PeerView): string {
           :aria-label="row.peer ? `${displayName(row.peer)}，${row.peer.online ? tr('在线') : tr('离线')}，${row.peer.ip}` : undefined"
         >
           <template v-if="row.kind === 'group'">
-            <span class="arrow" aria-hidden="true">{{ collapsed.has(row.key) ? '▸' : '▾' }}</span>
+            <PantryIcon class="arrow" name="chevron-right" :size="14" />
             <span class="g-label">{{ row.label }}</span>
             <span class="g-count">({{ row.online }}/{{ row.total }})</span>
           </template>
@@ -182,15 +184,10 @@ function displayName(peer: PeerView): string {
   color: var(--text-2);
   letter-spacing: 0.01em;
 }
-.placeholder {
-  color: var(--text-2);
-  font-size: 13px;
-  text-align: center;
-  margin-top: 24px;
-}
 .tree {
   list-style: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 1;
   padding: 0 8px 10px;
 }
@@ -212,9 +209,7 @@ function displayName(peer: PeerView): string {
   border-radius: var(--radius-panel);
   cursor: pointer;
   font-size: 13px;
-  transition:
-    background 150ms ease,
-    transform 90ms ease-out;
+  transition: background-color var(--motion-feedback) ease;
 }
 .tree-row:hover {
   background: var(--surface-hover);
@@ -228,12 +223,14 @@ function displayName(peer: PeerView): string {
   outline-offset: -2px;
 }
 .tree-row:active {
-  transform: scale(0.988);
+  background: var(--surface-pressed);
 }
 .arrow {
-  font-size: 10px;
-  color: var(--text-3);
-  width: 12px;
+  color: var(--text-2);
+  transition: transform var(--motion-feedback) var(--ease-out);
+}
+.tree-row[aria-expanded="true"] .arrow {
+  transform: rotate(90deg);
 }
 .g-label {
   font-weight: 600;
@@ -244,8 +241,8 @@ function displayName(peer: PeerView): string {
   color: var(--text-2);
 }
 .peer-avatar {
-  width: 34px;
-  height: 34px;
+  width: var(--avatar-list);
+  height: var(--avatar-list);
   border-radius: 50%;
   background: transparent;
   color: var(--on-primary);
@@ -292,11 +289,6 @@ function displayName(peer: PeerView): string {
   background: var(--offline);
 }
 @media (prefers-reduced-motion: reduce) {
-  .tree-row {
-    transition: none;
-  }
-  .tree-row:active {
-    transform: none;
-  }
+  .tree-row, .arrow { transition: none; }
 }
 </style>

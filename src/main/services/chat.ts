@@ -89,14 +89,20 @@ export class ChatService extends EventEmitter {
     return this.deps.convRepo.list().map(toConvView)
   }
 
-  /** 打开会话：建会话（幂等）+ 清未读 + 探活（F-DISC-8 二次校验） */
+  /** 打开会话时探活；未读由真正展示消息面板的窗口清除。 */
   openConversation(peerId: string): ConversationView {
     const convId = this.deps.convRepo.ensureSingle(peerId)
-    this.deps.convRepo.markRead(convId)
     this.deps.probe?.(peerId)
     this.emitConvs()
     const row = this.deps.convRepo.get(convId)
     return toConvView(row as ConvRow)
+  }
+
+  openGroupConversation(groupId: string): ConversationView | null {
+    if (!this.deps.groupRepo?.get(groupId)?.members.includes(this.deps.selfId)) return null
+    const id = this.deps.convRepo.ensureGroup(groupId)
+    this.emitConvs()
+    return toConvView(this.deps.convRepo.get(id) as ConvRow)
   }
 
   pageMessages(convId: string, beforeSeq: number | null, limit = 50): MessageView[] {

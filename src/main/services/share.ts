@@ -230,6 +230,7 @@ export function fitSharePage(entries: ShareEntry[], offset: number): ShareEntry[
 }
 
 interface ListSnapshot {
+  root: string
   peerId: string
   path: string
   entries: ShareEntry[]
@@ -320,11 +321,12 @@ export class ShareService {
     const rel = sanitizeSharePath(req.path)
     if (rel === null) return deny('not-found')
 
+    const root = this.deps.getRoot()
     let snapshot: ListSnapshot | null = null
     if (req.snapshotId) {
       const cached = this.snapshots.get(req.snapshotId)
       // 快照过期或不是本人、本目录的，让对端从第 0 页重来，别返回错位的一页
-      if (!cached || cached.peerId !== peerId || cached.path !== rel) return deny('gone')
+      if (!cached || cached.root !== root || cached.peerId !== peerId || cached.path !== rel) return deny('gone')
       if (now - cached.createdAt > SHARE_SNAPSHOT_TTL) {
         this.snapshots.delete(req.snapshotId)
         return deny('gone')
@@ -333,10 +335,10 @@ export class ShareService {
     }
     let snapshotId = req.snapshotId ?? ''
     if (!snapshot) {
-      const listing = listShareDirectory(this.deps.getRoot(), rel)
+      const listing = listShareDirectory(root, rel)
       if (!listing) return deny('not-found')
       snapshotId = randomUUID()
-      snapshot = { peerId, path: rel, ...listing, createdAt: now }
+      snapshot = { root, peerId, path: rel, ...listing, createdAt: now }
       this.putSnapshot(snapshotId, snapshot, now)
     }
 

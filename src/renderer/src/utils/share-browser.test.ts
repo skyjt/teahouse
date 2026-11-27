@@ -55,6 +55,33 @@ it('翻页失败保留首屏与选择，重试续页；刷新失败才清空列�
   expect(browser.failReason.value).toBe('offline')
 })
 
+it('权限被收回后，分页与刷新都收起上传入口并清除失效的选择', async () => {
+  const browser = useShareBrowser(() => 'alice')
+  api.browseShare.mockResolvedValueOnce(page('a'))
+  await browser.load('资料')
+  expect(browser.canUpload.value).toBe(true)
+  api.browseShare.mockResolvedValueOnce({ ...page('b'), perm: 'read' })
+  await browser.loadMore()
+  expect(browser.canUpload.value).toBe(false)
+  browser.togglePick('a')
+  api.browseShare.mockResolvedValueOnce({ ok: false, reason: 'off' })
+  await browser.loadMore()
+  expect(browser.failReason.value).toBe('off')
+  expect(browser.entries.value).toEqual([])
+  expect(browser.pickedCount.value).toBe(0)
+  api.browseShare.mockResolvedValueOnce(page('a'))
+  await browser.load('资料')
+  const reply = deferred<ShareBrowseResult>()
+  api.browseShare.mockReturnValueOnce(reply.promise)
+  const pending = browser.load('子目录')
+  expect(browser.canUpload.value).toBe(false)
+  reply.resolve({ ok: false, reason: 'off' })
+  await pending
+  await browser.upload(false)
+  expect(api.uploadShare).not.toHaveBeenCalled()
+  expect(browser.path.value).toBe('子目录')
+})
+
 it('快照失效从首页重取，保留已选项并清除翻页错误', async () => {
   const browser = useShareBrowser(() => 'alice')
   api.browseShare.mockResolvedValueOnce(page('a'))

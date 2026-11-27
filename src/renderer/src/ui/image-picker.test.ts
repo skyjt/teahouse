@@ -22,14 +22,14 @@ describe('发送图片按钮选择范围', () => {
       'async function sendImage()',
       'interface ClipboardImagePayload'
     )
-    expect(sendImage).toContain('window.pantry.pickImages()')
-    expect(sendImage).toContain('chatStore.sendImagePath(path)')
+    expect(sendImage).toContain('window.pantry.pickImages(peerName.value)')
+    expect(sendImage).toContain('chatStore.sendImagePath(path, recipient)')
     expect(sendImage).not.toContain('pickFiles(')
     expect(sendImage).not.toContain('sendFilePaths(')
   })
 
   it('preload 与主进程接入 img:pick、图片过滤器和二次白名单', () => {
-    expect(preloadSource).toContain('ipcRenderer.invoke(IpcChannels.imgPick)')
+    expect(preloadSource).toContain('ipcRenderer.invoke(IpcChannels.imgPick, undefined, recipient)')
     const picker = sourceBetween(mainSource, 'IpcChannels.imgPick', 'IpcChannels.fileGrantPaths')
     expect(picker).toContain("'选择要发送的图片'")
     expect(picker).toContain("'选择要导入的表情'")

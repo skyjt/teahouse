@@ -80,7 +80,7 @@ summary { width: fit-content; color: var(--primary); cursor: pointer; padding: 4
 p { margin: 0; line-height: 1.6; }
 .hint, .notice { color: var(--text-2); }
 .error { color: var(--danger); }
-.range-preview { max-height: 96px; overflow-y: auto; margin: 6px 0 0; padding-left: 20px; }
+.range-preview { max-height: 96px; overflow-y: auto; overscroll-behavior: contain; margin: 6px 0 0; padding-left: 20px; }
 .range-preview li { line-height: 1.6; }
 .import-body > .n-button { justify-self: start; }
 </style>

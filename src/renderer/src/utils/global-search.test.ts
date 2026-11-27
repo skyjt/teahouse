@@ -92,6 +92,17 @@ describe('全局搜索请求生命周期', () => {
     expect(state.searching.value).toBe(false)
   })
 
+  it('可用原关键词重试失败的查询', async () => {
+    search.mockRejectedValueOnce(new Error('unavailable')).mockResolvedValueOnce(empty)
+    const state = scope.run(() => useGlobalSearch(() => '会议纪要'))!
+    await vi.advanceTimersByTimeAsync(200)
+    expect(state.failed.value).toBe(true)
+    state.retry()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(search.mock.calls).toEqual([['会议纪要'], ['会议纪要']])
+    expect(state.failed.value).toBe(false)
+  })
+
   it('卸载使正在进行的请求失效', async () => {
     const request = deferred()
     search.mockReturnValue(request.promise)

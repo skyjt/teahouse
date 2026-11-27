@@ -1,8 +1,6 @@
-export type CaptureInitListener = (pngBytes: ArrayBuffer) => void
+import type { CaptureInit } from '../shared/ipc'
 
-interface CaptureInitPayload {
-  pngBytes: ArrayBuffer
-}
+type CaptureInitListener = (init: CaptureInit) => void
 
 /**
  * 截图初始化是 main → renderer 的单次事件。动态入口可能晚于事件到达，
@@ -12,17 +10,17 @@ export function createCaptureInitReplay(): {
   publish: CaptureInitListener
   subscribe: (listener: CaptureInitListener) => () => void
 } {
-  let latest: CaptureInitPayload | null = null
+  let latest: CaptureInit | null = null
   const listeners = new Set<CaptureInitListener>()
 
   return {
-    publish(pngBytes): void {
-      latest = { pngBytes }
-      for (const listener of listeners) listener(pngBytes)
+    publish(init): void {
+      latest = init
+      for (const listener of listeners) listener(init)
     },
     subscribe(listener): () => void {
       listeners.add(listener)
-      if (latest) listener(latest.pngBytes)
+      if (latest) listener(latest)
       return () => listeners.delete(listener)
     }
   }

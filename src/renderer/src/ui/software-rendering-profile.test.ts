@@ -26,7 +26,8 @@ describe('Win7 与 Linux 软渲染画像', () => {
     expect(tokensSource).toContain('--material-strong: #ffffff')
     expect(tokensSource).toContain('--material-strong: #202a38')
     expect(tokensSource).toContain('--shadow-float: 0 4px 14px')
-    expect(imageViewerSource).toContain('background: #202a38')
+    expect(tokensSource).toContain('--media-toolbar: #202a38')
+    expect(imageViewerSource).toContain('background: var(--media-toolbar)')
   })
 
   it('图片查看窗口加载画像后再挂载，所有平台仅手动触发 OCR', () => {

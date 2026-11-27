@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { tr } from '../utils/i18n'
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { SHARE_DIR_MAX_ENTRIES } from '../../../shared/protocol'
-import { useChatStore } from '../stores/chat'
 import { useShareBrowser } from '../utils/share-browser'
 import { formatBytes } from '../utils/format'
 import PantryIcon from './PantryIcon.vue'
@@ -20,10 +19,6 @@ const {
   toggleAll, togglePick, download, upload, cancelTransfer: cancelDownload
 } = browser
 const dragActive = ref(false)
-const chatStore = useChatStore()
-const uploadHint = computed(
-  () => tr('文件会放进 TA 文件柜的「{0}」文件夹里', { 0: chatStore.selfNick || tr('你的名字') })
-)
 
 function onScroll(event: Event): void {
   // 翻页失败后暂停自动续拉，保留已加载条目供用户重试。
@@ -82,7 +77,7 @@ onUnmounted(stopTransfer)
 
 <template>
   <aside
-    class="panel"
+    class="panel side-panel"
     :class="{ 'drag-active': dragActive }"
     :aria-label="tr('对方的文件柜')"
     @dragover="onDragOver"
@@ -91,18 +86,18 @@ onUnmounted(stopTransfer)
   >
     <header class="panel-head">
       <span class="panel-title" :title="tr('{0} 的文件柜', { 0: peerName })">{{ tr('{0}的文件柜', { 0: peerName }) }}</span>
-      <span v-if="!failReason" class="perm" :class="perm">{{ canUpload ? tr('可上传') : tr('只读') }}</span>
-      <button class="icon-btn" :title="tr('在文件柜里打开')" @click="openInCabinet">
-        <PantryIcon name="external" :size="14" />
+      <span v-if="!loading && !failReason" class="perm" :class="perm">{{ canUpload ? tr('可下载和上传') : tr('可下载') }}</span>
+      <button class="icon-control compact-icon icon-btn" :title="tr('在文件柜里打开')" @click="openInCabinet">
+        <PantryIcon name="external" size="compact" />
       </button>
-      <button class="icon-btn" :title="tr('关闭')" @click="emit('close')">
-        <PantryIcon name="x" :size="14" />
+      <button class="icon-control compact-icon icon-btn" :title="tr('关闭')" @click="emit('close')">
+        <PantryIcon name="x" size="compact" />
       </button>
     </header>
 
     <div class="crumbs">
-      <button class="icon-btn" :title="tr('返回上级')" :disabled="crumbs.length < 2 || loading" @click="goUp">
-        <PantryIcon name="chevron-left" :size="14" />
+      <button class="icon-control compact-icon icon-btn" :title="tr('返回上级')" :disabled="crumbs.length < 2 || loading" @click="goUp">
+        <PantryIcon name="chevron-left" size="compact" />
       </button>
       <div class="crumb-track">
         <template v-for="(c, i) in crumbs" :key="c.path">
@@ -117,9 +112,14 @@ onUnmounted(stopTransfer)
           </button>
         </template>
       </div>
-      <button class="icon-btn" :title="tr('刷新')" :disabled="loading" @click="load(path)">
-        <PantryIcon name="refresh" :size="14" />
+      <button class="icon-control compact-icon icon-btn" :title="tr('刷新')" :disabled="loading" @click="load(path)">
+        <PantryIcon name="refresh" size="compact" />
       </button>
+    </div>
+
+    <div v-if="canUpload" class="actions upload-actions" :title="tr('上传的文件会按你的名字归入对方文件柜。')">
+      <button class="ghost" :disabled="uploading" @click="upload(true)">{{ tr('上传文件夹') }}</button>
+      <button class="ghost" :disabled="uploading" @click="upload(false)">{{ tr('上传文件') }}</button>
     </div>
 
     <div v-if="loading" class="hint">{{ tr('正在读取…') }}</div>
@@ -183,24 +183,18 @@ onUnmounted(stopTransfer)
       >{{ tr('打开位置') }}</button>
     </div>
 
-    <footer class="panel-foot">
+    <footer v-if="!loading && !failReason" class="panel-foot">
       <div class="foot-row">
         <span class="foot-sum">
           <template v-if="pickedCount > 0">{{ tr('已选') }}<b>{{ pickedCount }}</b>{{ tr('项') }}</template>
           <template v-else-if="!failReason">{{ tr('双击进文件夹') }}</template>
         </span>
-        <div class="foot-actions">
-          <template v-if="pickedCount > 0">
-            <button class="ghost" :disabled="downloading" @click="download(true)">{{ tr('另存为') }}</button>
-            <button class="primary" :disabled="downloading" @click="download(false)">{{ tr('下载（{0}）', { 0: pickedCount }) }}</button>
-          </template>
-          <template v-else-if="canUpload">
-            <button class="ghost" :disabled="uploading" @click="upload(true)">{{ tr('上传文件夹') }}</button>
-            <button class="primary" :disabled="uploading" @click="upload(false)">{{ tr('上传到 TA 的柜子') }}</button>
-          </template>
+        <div v-if="pickedCount" class="actions">
+          <button class="ghost" :disabled="downloading" @click="download(true)">{{ tr('另存为') }}</button>
+          <button class="primary" :disabled="downloading" @click="download(false)">{{ tr('下载（{0}）', { 0: pickedCount }) }}</button>
         </div>
       </div>
-      <p v-if="canUpload" class="foot-note">{{ uploadHint }}</p>
+      <p v-if="canUpload" class="foot-note">{{ tr('上传的文件会按你的名字归入对方文件柜。') }}</p>
     </footer>
   </aside>
 </template>
@@ -214,7 +208,7 @@ onUnmounted(stopTransfer)
   width: 320px;
   border-left: 1px solid var(--line);
   background: var(--bg-window);
-  box-shadow: -10px 0 28px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-float);
   z-index: 26;
   display: flex;
   flex-direction: column;
@@ -253,29 +247,6 @@ onUnmounted(stopTransfer)
 .perm.write {
   background: var(--primary-weak);
   color: var(--primary);
-}
-
-.icon-btn {
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-}
-
-.icon-btn:hover:not(:disabled) {
-  background: var(--line);
-  color: var(--primary);
-}
-
-.icon-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 
 .crumbs {
@@ -337,6 +308,7 @@ onUnmounted(stopTransfer)
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 2px 6px;
 }
 
@@ -497,7 +469,9 @@ onUnmounted(stopTransfer)
   color: var(--text-3);
 }
 
-.foot-actions {
+.upload-actions { padding: 4px 8px; }
+
+.actions {
   flex-shrink: 0;
   display: flex;
   justify-content: flex-end;

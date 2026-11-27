@@ -1,3 +1,5 @@
+import { tr } from './i18n'
+
 // 展示用的数值格式化（决议 #281）。
 // 收在一处的原因：文件卡、传输记录、设置页与文件柜面板原先各写一份，
 // 同一个字节数在不同界面上会显示成「12 MB」和「12.3 MB」两种样子。
@@ -19,4 +21,17 @@ export function formatBytes(bytes: number): string {
   }
   const text = unit === 0 || value >= 10 ? String(Math.round(value)) : value.toFixed(1)
   return `${text} ${UNITS[unit]}`
+}
+
+export function formatCabinetTime(ms: number): string {
+  if (!ms) return ''
+  const d = new Date(ms)
+  const now = new Date()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  if (d.getFullYear() !== now.getFullYear()) return `${d.getFullYear()}-${mm}-${dd}`
+  const sameDay = d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+  return sameDay ? tr('今天 {0}:{1}', { 0: hh, 1: mi }) : `${mm}-${dd} ${hh}:${mi}`
 }

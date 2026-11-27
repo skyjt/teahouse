@@ -19,6 +19,7 @@ import { usePeersStore } from '../stores/peers'
 
 const props = defineProps<{
   msg: MessageView
+  nextMsg?: MessageView
   prevTs: number | null
   isGroupConv: boolean
   senderName: string
@@ -48,6 +49,13 @@ const showGroupSender = computed(
     props.msg.kind !== 'system' &&
     props.msg.status !== 'recalled'
 )
+const compactReceipt = computed(() => {
+  const next = props.nextMsg
+  return props.msg.kind === 'text' && props.msg.isMine && props.msg.status === 'sent' &&
+    next?.kind === 'text' && next.isMine && next.status === 'sent' && !shouldShowSeparator(next.ts, props.msg.ts)
+})
+const receiptExpanded = ref(false)
+const receiptLabel = computed(() => props.isGroupConv ? tr('已发送') : tr('已送达'))
 const parts = computed(() => textParts(props.msg.text))
 const statusHint = computed(() => messageStatusHint(props.msg.kind, props.msg.status))
 
@@ -139,7 +147,7 @@ const replyMeta = computed((): ReplyMeta => {
       :name="props.senderName"
     />
     <span class="message-stack" :class="{ 'file-stack': props.msg.kind === 'file' }">
-      <span v-if="showGroupSender" class="sender">{{ props.senderName }}</span>
+      <span v-if="showGroupSender" class="sender" :title="props.senderName">{{ props.senderName }}</span>
       <ScreenHistoryCard v-if="props.msg.screenRef" :record="props.msg.screenRef" />
       <FileCard
         v-else-if="props.msg.kind === 'file'"
@@ -191,14 +199,18 @@ const replyMeta = computed((): ReplyMeta => {
             </template>
           </span>
         </template>
+        <button v-if="compactReceipt" type="button" class="receipt-check" :title="receiptLabel"
+          :aria-label="receiptLabel" :aria-expanded="receiptExpanded" @click.stop="receiptExpanded = !receiptExpanded">
+          <PantryIcon name="check" :size="12" /><span v-if="receiptExpanded">{{ receiptLabel }}</span>
+        </button>
       </div>
-      <div v-if="props.msg.replyTo" class="reply-quote" @click.stop="$emit('reply-to', props.msg.replyTo)">
+      <button type="button" v-if="props.msg.replyTo" class="reply-quote" @click.stop="$emit('reply-to', props.msg.replyTo)">
         <span class="reply-quote-label">{{ tr('引用') }}</span>
         <span class="reply-quote-sender" v-if="replyMeta.senderName">{{ replyMeta.senderName }}：</span>
         <span class="reply-quote-text">{{ replyMeta.text }}</span>
-      </div>
-      <span v-if="props.msg.isMine && props.msg.status === 'sent' &&
-        !['system', 'file', 'image', 'sticker'].includes(props.msg.kind)" class="delivery-state">{{ tr('已送达') }}</span>
+      </button>
+      <span v-if="!compactReceipt && props.msg.isMine && props.msg.status === 'sent' &&
+        !['system', 'file', 'image', 'sticker'].includes(props.msg.kind)" class="delivery-state">{{ receiptLabel }}</span>
     </span>
     <!-- 附件的 offer ACK 仅表示已通知；完成结果由 FileCard / ImageBubble 展示。 -->
     <span v-if="props.msg.isMine && props.msg.kind !== 'system' && props.msg.status !== 'sent'" class="status">
@@ -210,22 +222,23 @@ const replyMeta = computed((): ReplyMeta => {
         :size="13"
         :title="tr('发送取消')"
       />
-      <span
+      <button type="button"
         v-else-if="props.msg.status === 'queued'"
         class="queued"
         :title="tr('对方上线后自动送达')"
         @click="emit('resend', props.msg.id)"
       >
         <PantryIcon name="clock" :size="13" />
-      </span>
-      <span
+      </button>
+      <button type="button"
         v-else
         class="fail"
+        :aria-label="tr('发送失败，点击重发')"
         :title="tr('发送失败，点击重发')"
         @click="emit('resend', props.msg.id)"
       >
         !
-      </span>
+      </button>
     </span>
   </div>
   <div v-if="props.msg.isMine && statusHint" class="hint" :class="props.msg.status">
@@ -235,6 +248,7 @@ const replyMeta = computed((): ReplyMeta => {
 
 <style scoped>
 .sep {
+  font-variant-numeric: tabular-nums;
   text-align: center;
   font-size: 12px;
   color: var(--text-3);
@@ -266,17 +280,15 @@ const replyMeta = computed((): ReplyMeta => {
 .row.mine {
   flex-direction: row-reverse;
 }
-.row.highlight {
-  animation: hl 2.4s ease;
-  border-radius: var(--radius-panel);
+.row.highlight .message-surface {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
-@keyframes hl {
-  0%,
-  60% {
-    background: rgba(var(--primary-rgb), 0.16);
-  }
-  100% {
-    background: transparent;
+@media (prefers-reduced-motion: no-preference) {
+  .row.highlight .message-surface { animation: message-locate 2.4s ease-out forwards; }
+  @keyframes message-locate {
+    0%, 55% { outline-color: var(--primary); }
+    100% { outline-color: transparent; }
   }
 }
 .msg-avatar {
@@ -307,6 +319,10 @@ const replyMeta = computed((): ReplyMeta => {
   flex-shrink: 1;
 }
 .sender {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--text-3);
   margin-left: 4px;
@@ -315,6 +331,9 @@ const replyMeta = computed((): ReplyMeta => {
   flex-shrink: 0;
 }
 .reply-quote {
+  border: 0;
+  font: inherit;
+  text-align: start;
   max-width: 100%;
   padding: 5px 9px;
   border-radius: 8px;
@@ -399,6 +418,23 @@ const replyMeta = computed((): ReplyMeta => {
   display: grid;
   place-items: center;
 }
+.receipt-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 24px;
+  min-height: 24px;
+  margin-inline-start: 2px;
+  vertical-align: middle;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--text-2);
+  background: transparent;
+  font-size: var(--font-xs);
+  cursor: pointer;
+  user-select: none;
+}
 .delivery-state {
   margin-top: 2px;
   font-size: 12px;
@@ -408,6 +444,8 @@ const replyMeta = computed((): ReplyMeta => {
 .status .canceled {
   color: var(--text-3);
 }
+.status button { min-width: 24px; height: 24px; border: 0; border-radius: var(--radius-control); background: transparent; color: inherit; }
+.status:has(button) { width: 24px; height: 24px; }
 .status .fail {
   color: var(--danger);
   cursor: pointer;
@@ -438,7 +476,6 @@ const replyMeta = computed((): ReplyMeta => {
   color: var(--danger);
 }
 @media (prefers-reduced-motion: reduce) {
-  .row.highlight,
   .spin {
     animation: none;
   }
