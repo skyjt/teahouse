@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { messageText } from '../utils/message-text'
 import { tr } from '../utils/i18n'
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import type { MessageView, ReplyMeta } from '../../../shared/ipc'
 import type { PkGame } from '../../../shared/pk'
-import { splitEmojiText } from '../utils/compat-emoji'
-import { messageStatusHint, shouldShowSeparator, textParts } from '../utils/message-row'
+import { messageStatusHint, shouldShowSeparator } from '../utils/message-row'
 import { separatorTime } from '../utils/time'
 import AvatarMark from './AvatarMark.vue'
-import CompatEmoji from './CompatEmoji.vue'
+
+/** KaTeX/markdown-it 体积大，异步拆出 App 静态闭包以守住 bundle 门禁 */
+const MarkdownBubble = defineAsyncComponent(() => import('./MarkdownBubble.vue'))
 import FileCard from './FileCard.vue'
 import ImageBubble from './ImageBubble.vue'
 import PantryIcon from './PantryIcon.vue'
@@ -56,15 +57,10 @@ const compactReceipt = computed(() => {
 })
 const receiptExpanded = ref(false)
 const receiptLabel = computed(() => props.isGroupConv ? tr('已发送') : tr('已送达'))
-const parts = computed(() => textParts(props.msg.text))
 const statusHint = computed(() => messageStatusHint(props.msg.kind, props.msg.status))
 
 function openMessageMenu(event: MouseEvent): void {
   emit('contextmenu', event, props.msg)
-}
-
-function openTextLink(url: string): void {
-  void window.pantry.openUrl(url)
 }
 
 /** 文件柜上传提示：点一下直接打开本机落盘目录（决议 #274） */
@@ -180,25 +176,7 @@ const replyMeta = computed((): ReplyMeta => {
         class="bubble message-surface"
         @contextmenu.prevent.stop="openMessageMenu"
       >
-        <template v-for="(part, partIndex) in parts" :key="partIndex">
-          <button
-            v-if="part.url"
-            class="text-link"
-            type="button"
-            @click.stop="openTextLink(part.url)"
-          >
-            {{ part.text }}
-          </button>
-          <span v-else>
-            <template
-              v-for="(emojiPart, emojiPartIndex) in splitEmojiText(part.text)"
-              :key="emojiPartIndex"
-            >
-              <CompatEmoji v-if="emojiPart.emoji" :emoji="emojiPart.text" />
-              <span v-else>{{ emojiPart.text }}</span>
-            </template>
-          </span>
-        </template>
+        <MarkdownBubble :text="props.msg.text" />
         <button v-if="compactReceipt" type="button" class="receipt-check" :title="receiptLabel"
           :aria-label="receiptLabel" :aria-expanded="receiptExpanded" @click.stop="receiptExpanded = !receiptExpanded">
           <PantryIcon name="check" :size="12" /><span v-if="receiptExpanded">{{ receiptLabel }}</span>
