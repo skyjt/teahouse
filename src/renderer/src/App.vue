@@ -275,6 +275,7 @@ const selfOrgPath = computed(() => {
   return parts.length > 0 ? parts.join(' / ') : tr('未设置组织信息')
 })
 const selfIpText = computed(() => info.value?.localIp || tr('正在获取'))
+const selfMacText = computed(() => info.value?.localMac || '')
 const selfHostText = computed(() => settings.value?.host.trim() || tr('主机名未加载'))
 const selfNodeShort = computed(() => info.value?.nodeId.slice(0, 8) ?? tr('加载中'))
 const activeRailHint = ref<string | null>(null)
@@ -551,6 +552,7 @@ onUnmounted(() => {
             <div class="self-card-network">
               <span class="self-card-network-label">{{ tr('本机 IP') }}</span>
               <span class="self-card-ip">{{ selfIpText }}</span>
+              <span v-if="selfMacText" class="self-card-mac">MAC {{ selfMacText }}</span>
             </div>
             <dl class="self-card-details">
               <div class="self-card-detail">
@@ -995,6 +997,16 @@ onUnmounted(() => {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   font-size: 15px;
   font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.self-card-mac {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: var(--font-xs);
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;

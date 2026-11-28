@@ -97,6 +97,48 @@ describe('codec', () => {
     ).toEqual({ ok: false, reason: 'bad-payload:entry' })
   })
 
+  it('资料 MAC 可选；空串/合法格式通过，非法拒收', () => {
+    expect(
+      decode(encode(makeEnvelope<ProfilePayload>(MSG_TYPES.entry, 'node-aaaa', { profile: makeProfile() })))
+    ).toMatchObject({ ok: true, known: true })
+    expect(
+      decode(
+        encode(
+          makeEnvelope<ProfilePayload>(MSG_TYPES.entry, 'node-aaaa', {
+            profile: makeProfile({ mac: '' })
+          })
+        )
+      )
+    ).toMatchObject({ ok: true, known: true })
+    expect(
+      decode(
+        encode(
+          makeEnvelope<ProfilePayload>(MSG_TYPES.entry, 'node-aaaa', {
+            profile: makeProfile({ mac: 'aa:bb:cc:dd:ee:ff' })
+          })
+        )
+      )
+    ).toMatchObject({ ok: true, known: true })
+    expect(
+      decode(
+        encode(
+          makeEnvelope<ProfilePayload>(MSG_TYPES.entry, 'node-aaaa', {
+            profile: makeProfile({ mac: 'AA-BB-CC-DD-EE-FF' })
+          })
+        )
+      )
+    ).toMatchObject({ ok: true, known: true })
+    expect(
+      decode(
+        encode(
+          makeEnvelope<ProfilePayload>(MSG_TYPES.entry, 'node-aaaa', {
+            profile: makeProfile({ mac: 'not-a-mac' })
+          })
+        )
+      )
+    ).toEqual({ ok: false, reason: 'bad-payload:entry' })
+  })
+
   it('昵称首字显式背景色头像编号可编解码', () => {
     const env = makeEnvelope<ProfilePayload>(MSG_TYPES.profile, 'node-aaaa', {
       profile: makeProfile({ avatar: 209 })

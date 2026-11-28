@@ -157,6 +157,10 @@ function lastSeenLabel(peer: PeerView): string {
             <strong>{{ peer.ip }}</strong>
           </div>
           <div class="info-row">
+            <span>{{ tr('MAC 地址') }}</span>
+            <strong>{{ peer.mac || tr('未知') }}</strong>
+          </div>
+          <div class="info-row">
             <span>{{ tr('主机') }}</span>
             <strong>{{ peer.host }}</strong>
           </div>

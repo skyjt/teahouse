@@ -16,6 +16,7 @@ import {
   type Profile,
   type ShareMode
 } from '../../shared/protocol'
+import { macForIpv4, resolveLocalIpv4 } from '../util/local-network'
 
 // 本地状态：identity.json（节点身份，永不变）+ config.json（资料与应用设置）。
 // 读写走原子写，避免异常退出留下半截 JSON。
@@ -50,6 +51,11 @@ export interface ConfigFile {
   /** 监听端口；保存后重启生效 */
   udpPort: number
   tcpPort: number
+  /**
+   * 首选本机 IPv4（多网卡时指定发现/展示用网卡）。
+   * 空串=自动；保存后需重启应用以重绑 UDP/TCP。
+   */
+  preferredLocalIp: string
   /** 截图时隐藏茶话间窗口（决议 #22，默认开） */
   hideOnCapture: boolean
   /** 开机自启（F-SYS-3，默认开） */
@@ -183,6 +189,18 @@ export function saveProfileCaps(state: AppState, caps: string[]): boolean {
 }
 
 /**
+ * 写入本机身份 IP 对应的 MAC（强制广播字段，无开关）。
+ * 变化时 profileRev+1，由调用方 announceProfile。
+ */
+export function applyLocalIdentityMac(state: AppState, mac: string): boolean {
+  const next = typeof mac === 'string' ? mac.trim() : ''
+  if ((state.profile.mac ?? '') === next) return false
+  saveProfileRevision(state, true)
+  state.profile.mac = next
+  return true
+}
+
+/**
  * 保存向导/设置提交的资料：资料字段有变则 profileRev+1（触发全网刷新），
  * 同步原地更新 profile 对象（discovery 持引用，presence 立即携带新 rev）。
  */
@@ -231,6 +249,7 @@ export function saveAppSettings(
       | 'scanRanges'
       | 'udpPort'
       | 'tcpPort'
+      | 'preferredLocalIp'
       | 'hideOnCapture'
       | 'autoLaunch'
       | 'closeToTray'
@@ -272,6 +291,10 @@ export function saveAppSettings(
   }
   if (patch.udpPort !== undefined) state.config.udpPort = patch.udpPort
   if (patch.tcpPort !== undefined) state.config.tcpPort = patch.tcpPort
+  if (patch.preferredLocalIp !== undefined) {
+    state.config.preferredLocalIp =
+      typeof patch.preferredLocalIp === 'string' ? patch.preferredLocalIp.trim() : ''
+  }
   if (patch.hideOnCapture !== undefined) state.config.hideOnCapture = patch.hideOnCapture
   if (patch.autoLaunch !== undefined) state.config.autoLaunch = patch.autoLaunch
   if (patch.closeToTray !== undefined) state.config.closeToTray = patch.closeToTray
@@ -383,6 +406,7 @@ export function loadAppState(
       ignoredScanRanges: {},
       udpPort,
       tcpPort,
+      preferredLocalIp: '',
       hideOnCapture: true,
       autoLaunch: true,
       closeToTray: true,
@@ -467,6 +491,11 @@ export function loadAppState(
     config.tcpPort <= 65535
       ? config.tcpPort
       : DEFAULT_TCP_PORT
+  config.preferredLocalIp =
+    typeof config.preferredLocalIp === 'string' &&
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(config.preferredLocalIp.trim())
+      ? config.preferredLocalIp.trim()
+      : ''
   config.hideOnCapture = config.hideOnCapture !== false
   config.autoLaunch = config.autoLaunch !== false
   config.closeToTray = config.closeToTray !== false
@@ -497,6 +526,7 @@ export function loadAppState(
       ? config.showHideShortcut
       : 'CommandOrControl+Alt+P'
 
+  const identityMac = macForIpv4(resolveLocalIpv4(config.preferredLocalIp ?? ''))
   const profile: Profile = {
     nodeId: identity.nodeId,
     nick: config.nick,
@@ -509,6 +539,7 @@ export function loadAppState(
     host: hostname(),
     platform: detectPlatform(),
     tcpPort,
+    mac: identityMac,
     ver: appVersion,
     caps
   }

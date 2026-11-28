@@ -67,6 +67,7 @@ export class SearchService {
         host: r.profile.host,
         platform: r.profile.platform,
         ip: r.ip,
+        mac: r.profile.mac ?? '',
         online: r.online,
         lastSeen: r.lastSeen,
         ver: r.profile.ver,

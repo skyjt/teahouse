@@ -92,6 +92,11 @@ function isRuntimeArch(x: unknown): x is 'x64' | 'ia32' | 'arm64' {
   return x === 'x64' || x === 'ia32' || x === 'arm64'
 }
 
+/** 允许空串；非空须为 6 段十六进制，分隔符统一为 : 或 -。 */
+export function isMacAddress(value: unknown): value is string {
+  return typeof value === 'string' && /^(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(value)
+}
+
 export function validateProfile(p: unknown): p is Profile {
   if (!isRecord(p)) return false
   if (!isStr(p.nodeId, LIMITS.from)) return false
@@ -106,6 +111,10 @@ export function validateProfile(p: unknown): p is Profile {
   if (p.platform !== 'win' && p.platform !== 'mac' && p.platform !== 'linux') return false
   if (!isInt(p.tcpPort) || p.tcpPort < 1 || p.tcpPort > 65535) return false
   if (!isStrAllowEmpty(p.ver, LIMITS.ver)) return false
+  if (p.mac !== undefined) {
+    if (!isStrAllowEmpty(p.mac, LIMITS.mac)) return false
+    if (p.mac.length > 0 && !isMacAddress(p.mac)) return false
+  }
   if (!Array.isArray(p.caps) || p.caps.length > LIMITS.caps) return false
   if (!p.caps.every((c) => typeof c === 'string' && c.length <= LIMITS.capItem)) return false
   return true
