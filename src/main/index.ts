@@ -87,6 +87,7 @@ import {
   LIMITS,
   MSG_TYPES,
   TABLE_TEXT_LIMIT_BYTES,
+  TEXT_TCP_LIMIT,
   SHARE_GET_AUTH_TTL,
   SHARE_GET_MAX_PATHS,
   SHARE_PATH_MAX,
@@ -1847,7 +1848,7 @@ if (!gotLock) {
 
   ipcMain.handle(IpcChannels.msgSend, (_event, peerId: unknown, text: unknown) => {
     if (typeof peerId !== 'string' || peerId.length === 0 || peerId.length > 64) return null
-    if (typeof text !== 'string' || text.length === 0 || text.length > 4096) return null
+    if (typeof text !== 'string' || text.length === 0 || text.length > TEXT_TCP_LIMIT) return null
     return chat?.sendText(peerId, text) ?? null
   })
 
@@ -2994,7 +2995,7 @@ if (!gotLock) {
 
   ipcMain.handle(IpcChannels.groupSend, (_event, groupId: unknown, text: unknown, mentions: unknown, replyTo: unknown) => {
     if (typeof groupId !== 'string' || groupId.length > 64) return null
-    if (typeof text !== 'string' || text.length === 0 || text.length > 4096) return null
+    if (typeof text !== 'string' || text.length === 0 || text.length > TEXT_TCP_LIMIT) return null
     const cleanMentions =
       Array.isArray(mentions) && mentions.every((m) => typeof m === 'string' && m.length <= 64)
         ? (mentions as string[]).slice(0, GROUP_MAX_MEMBERS)

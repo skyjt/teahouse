@@ -453,7 +453,7 @@ screen-next(seq=2) ────────────→ 再采样；始终最
 | UDP_PORT / TCP_PORT | 17878 / 17879 | 决议 #6，已拍板 |
 | UDP_MAX_PAYLOAD | 1200 B | 防 IP 分片 |
 | TEXT_UDP_LIMIT | 800 B | 超过走 TCP |
-| TEXT_TCP_LIMIT | 4096 B | 文本输入硬上限 |
+| TEXT_TCP_LIMIT | 57344 B（56 KiB） | 文本输入硬上限（UTF-8）；为 TCP 64KiB 控制帧预留信封开销 |
 | UPDATE_PACKAGE_MAX_BYTES | 536870912 B（512 MiB） | `purpose:"update"` 单包硬上限，决议 #208 |
 | ACK_RETRY | 1s / 2s / 4s ×3 | 之后入补发队列 |
 | ENTRY_REPLY_JITTER | 0–2s，按在线规模自适应扩至 0–8s | 防应答风暴（含批量开机，§6.1） |
@@ -539,6 +539,7 @@ screen-next(seq=2) ────────────→ 再采样；始终最
 - 2026-06-11 v0.12 文本消息撤回落地：`msg.kind` 增加 `recall`，载荷携带 `targetId`，群聊撤回同时携带 `groupId/groupRev`；撤回窗口 2 分钟，可靠投递与离线补发复用 §7.2，收端校验原发送者后隐藏原消息并插系统提示行。图片/文件/表情撤回留待 file-ctl 具备跨端一致消息 id 后扩展。
 - 2026-06-11 v0.13 群内 @ 落地：`group-text` 可选 `mentions: nodeId[]`；收端仅用于本地加强提醒与会话列表标记，不改变投递范围。
 - 2026-06-11 v0.14 超长文本 TCP 落地：TCP 控制帧增加 `msg/msg-ack`，承载超过 UDP 单包上限的可靠信封；短消息仍走 UDP ACK，文本硬上限 4096B。
+- 2026-11-26：文本硬上限 `TEXT_TCP_LIMIT` 由 4096B 调整为 57344B（56 KiB），仍受 TCP 控制帧 64KiB 上限约束；`TABLE_TEXT_LIMIT` 保持 4096B 并与正文上限解耦。
 - 2026-06-11 v0.15 群管理权限落地：群元数据新增 `creatorIp/adminSecretHash`；建群时可选管理密码，管理变更按“密码摘要或创建 IP”校验，退组不要求管理权限。
 - 2026-06-12 v0.16 头像模板编号语义修正：`profile.avatar` 仍为 number；`-1` 表示昵称色块，`>=0` 按“背景色下标 * 20 + emoji 下标”解释，不新增线上字段。
 - 2026-06-12 v0.17 讨论组管理密码提示落地：群元数据新增 `adminHint`，随 `group.info` 同步与备份，用于成员输入管理密码时展示；管理密码仍只保存和传输摘要。
