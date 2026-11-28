@@ -1588,6 +1588,7 @@ async function onDrop(event: DragEvent): Promise<void> {
           <div class="profile-rows">
             <div class="profile-row"><span>{{ tr('组织') }}</span><strong>{{ peerOrgPath(peer) }}</strong></div>
             <div class="profile-row"><span>IP</span><strong>{{ peer.ip || tr('未知') }}</strong></div>
+            <div class="profile-row"><span>{{ tr('MAC 地址') }}</span><strong>{{ peer.mac || tr('未知') }}</strong></div>
             <div class="profile-row"><span>{{ tr('主机') }}</span><strong>{{ peer.host || tr('未知') }}</strong></div>
             <div class="profile-row">
               <span>{{ tr('平台') }}</span><strong>{{ peerPlatformLabel(peer.platform) }}</strong>

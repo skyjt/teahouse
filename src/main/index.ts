@@ -1,5 +1,11 @@
 import { RangeScanScheduler } from './services/range-scan'
 import { truncateUtf8 } from './util/utf8'
+import {
+  listExternalIpv4Interfaces,
+  macForIpv4,
+  resolveBindAddress,
+  resolveLocalIpv4
+} from './util/local-network'
 import { DiagnosticsService, diagnosticEnvironment, type StartupStage } from './services/diagnostics'
 import { setupDiagnosticsUi } from './services/diagnostics-ui'
 import { isLanguage, setLanguage, tr } from '../i18n'
@@ -19,7 +25,6 @@ import {
   systemPreferences,
   type Tray
 } from 'electron'
-import { networkInterfaces } from 'node:os'
 import { isIPv4 } from 'node:net'
 import {
   accessSync,
@@ -42,6 +47,7 @@ import {
   IpcEvents,
   type AvatarSourcePick,
   type AppInfo,
+  type LocalNetworkInterfaceView,
   type AppSettingsPatch,
   type ConversationSearchOptions,
   type CaptureFailureReason,
@@ -107,6 +113,7 @@ import { inspectImageMetadata } from '../shared/image-metadata'
 import { DEFAULT_IMAGE_EXTENSION, IMAGE_FILE_EXTENSIONS } from '../shared/media'
 import {
   addSharedScanRanges,
+  applyLocalIdentityMac,
   loadAppState,
   saveAppSettings,
   importScanRanges,
@@ -673,13 +680,24 @@ if (!gotLock) {
     mainWindow?.setTitle(mainWindowTitle())
   }
 
+  function preferredLocalIpConfig(): string {
+    return appState?.config.preferredLocalIp ?? ''
+  }
+
   function currentLocalIpv4(): string {
-    for (const list of Object.values(networkInterfaces())) {
-      for (const addr of list ?? []) {
-        if (addr.family === 'IPv4' && !addr.internal) return addr.address
-      }
-    }
-    return '127.0.0.1'
+    return resolveLocalIpv4(preferredLocalIpConfig())
+  }
+
+  function currentLocalMac(): string {
+    return macForIpv4(currentLocalIpv4())
+  }
+
+  function networkInterfaceViews(): LocalNetworkInterfaceView[] {
+    return listExternalIpv4Interfaces().map((item) => ({
+      name: item.name,
+      address: item.address,
+      mac: item.mac
+    }))
   }
 
   function toggleMainWindow(): void {
@@ -860,6 +878,7 @@ if (!gotLock) {
       host: record.profile.host,
       platform: record.profile.platform,
       ip: record.ip,
+      mac: record.profile.mac ?? '',
       online: record.online,
       lastSeen: record.lastSeen,
       ver: record.profile.ver,
@@ -1198,7 +1217,19 @@ if (!gotLock) {
         return { host, port: Number(port) || udpPort }
       })
     ]
-    const udp = new UdpChannel({ port: udpPort, ...(process.env['PANTRY_SMOKE'] ? { bindAddress: '127.0.0.1', broadcastTargets: [] } : {}) })
+    const preferredIp = preferredLocalIpConfig()
+    const bindAddress = process.env['PANTRY_SMOKE']
+      ? '127.0.0.1'
+      : resolveBindAddress(preferredIp)
+    const udp = new UdpChannel({
+      port: udpPort,
+      ...(process.env['PANTRY_SMOKE']
+        ? { bindAddress: '127.0.0.1', broadcastTargets: [] }
+        : {
+            ...(bindAddress ? { bindAddress } : {}),
+            preferredLocalIp: preferredIp
+          })
+    })
     registry = new PeerRegistry(state.nodeId)
     // 时钟偏移矫正（决议 #65）：发现层观测各节点时钟差，chat/groups 显示时矫正到本机钟
     const peerClock = new PeerClock()
@@ -1322,7 +1353,11 @@ if (!gotLock) {
         transferRepo: new TransferRepo(db),
         groupRepo,
         tcpPort,
-        ...(process.env['PANTRY_SMOKE'] ? { bindAddress: '127.0.0.1' } : {}),
+        ...(process.env['PANTRY_SMOKE']
+          ? { bindAddress: '127.0.0.1' }
+          : bindAddress
+            ? { bindAddress }
+            : {}),
         getSaveDir: () =>
           appState?.config.fileDir || defaultFileDir(),
         getImagesDir: imagesDir,
@@ -1440,6 +1475,8 @@ if (!gotLock) {
     try {
       await udp.start()
       remoteView.setNetworkReady(tcpReady)
+      // 身份 IP→MAC 强制写入 Profile（无开关）；变化则 bump rev，随 entry 广播
+      applyLocalIdentityMac(state, currentLocalMac())
       discovery.start()
       rangeSync?.start()
       rangeScanner = new RangeScanScheduler({
@@ -1737,7 +1774,9 @@ if (!gotLock) {
       windows7: WINDOWS7,
       softwareRendering: SOFTWARE_RENDERING,
       nodeId: appState?.nodeId ?? '',
-      localIp: currentLocalIpv4()
+      localIp: currentLocalIpv4(),
+      localMac: currentLocalMac(),
+      preferredLocalIp: preferredLocalIpConfig()
     }
   })
 
@@ -1918,6 +1957,10 @@ if (!gotLock) {
       scanRangeItems: scanRangeItems(),
       udpPort: c?.udpPort ?? udpPort,
       tcpPort: c?.tcpPort ?? tcpPort,
+      preferredLocalIp: c?.preferredLocalIp ?? '',
+      localIp: currentLocalIpv4(),
+      localMac: currentLocalMac(),
+      networkInterfaces: networkInterfaceViews(),
       hideOnCapture: c?.hideOnCapture !== false,
       autoLaunch: c?.autoLaunch !== false,
       closeToTray: c?.closeToTray !== false,
@@ -2658,6 +2701,15 @@ if (!gotLock) {
       if (nextUdpPort !== null) clean.udpPort = nextUdpPort
       const nextTcpPort = parsePortValue(p.tcpPort)
       if (nextTcpPort !== null) clean.tcpPort = nextTcpPort
+      if (typeof p.preferredLocalIp === 'string') {
+        const candidate = p.preferredLocalIp.trim()
+        if (
+          candidate === '' ||
+          listExternalIpv4Interfaces().some((item) => item.address === candidate)
+        ) {
+          clean.preferredLocalIp = candidate
+        }
+      }
       if (typeof p.hideOnCapture === 'boolean') clean.hideOnCapture = p.hideOnCapture
       if (typeof p.autoLaunch === 'boolean') clean.autoLaunch = p.autoLaunch
       if (typeof p.closeToTray === 'boolean') clean.closeToTray = p.closeToTray

@@ -226,6 +226,7 @@ const exportTo = ref('')
 // 高级表单
 const udpPortInput = ref('')
 const tcpPortInput = ref('')
+const preferredLocalIp = ref('')
 type PortField = 'udp' | 'tcp'
 const pendingPortEdit = ref<PortField | null>(null)
 const unlockedPort = ref<PortField | null>(null)
@@ -327,6 +328,7 @@ function syncForm(s: SettingsView): void {
   fileDir.value = s.fileDir
   udpPortInput.value = String(s.udpPort)
   tcpPortInput.value = String(s.tcpPort)
+  preferredLocalIp.value = s.preferredLocalIp ?? ''
   captureShortcut.value = s.captureShortcut
   showHideShortcut.value = s.showHideShortcut
   applyAppearance(s)
@@ -621,6 +623,23 @@ function shortcutLabel(acc: string): string {
   const mod = info.value?.platform === 'darwin' ? '⌘' : 'Ctrl'
   return acc.replace('CommandOrControl', mod).replace(/\+/g, ' + ')
 }
+
+async function onPreferredIpChange(value: string): Promise<void> {
+  preferredLocalIp.value = value
+  const s = settings.value
+  if (!s || value === (s.preferredLocalIp ?? '')) return
+  await saveApp({ preferredLocalIp: value }, tr('网卡已保存，重启后生效'))
+}
+
+/** 下拉选中网卡的 MAC；未指定时跟随当前生效 IP。 */
+const selectedIfaceMac = computed(() => {
+  const list = settings.value?.networkInterfaces ?? []
+  const preferred = preferredLocalIp.value
+  if (preferred) {
+    return list.find((item) => item.address === preferred)?.mac || ''
+  }
+  return settings.value?.localMac || ''
+})
 
 // 端口框失焦即保存（决议 #151）：无改动跳过；无效值复原并提示
 async function autoSavePorts(): Promise<void> {
@@ -1353,6 +1372,40 @@ async function confirmRemove(cidr: string): Promise<void> {
 
           <div class="panel">
             <div class="panel-head">
+              <h2>{{ tr('本机网卡') }}</h2>
+              <p>{{ tr('多网卡时可指定用于局域网发现与本机展示的 IPv4；修改后需重启应用生效。') }}</p>
+            </div>
+            <label class="field">
+              <span>{{ tr('选用网卡 IP') }}</span>
+              <select
+                class="port-input"
+                :value="preferredLocalIp"
+                @change="onPreferredIpChange(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="">{{ tr('自动（默认）') }}</option>
+                <option
+                  v-for="iface in settings?.networkInterfaces ?? []"
+                  :key="iface.address"
+                  :value="iface.address"
+                >
+                  {{ iface.address }} · {{ iface.name }} · MAC {{ iface.mac || tr('未知') }}
+                </option>
+              </select>
+            </label>
+            <div class="iface-meta">
+              <div>
+                <span class="iface-label">{{ tr('当前生效 IP') }}</span>
+                <strong class="mono">{{ settings?.localIp || '-' }}</strong>
+              </div>
+              <div>
+                <span class="iface-label">{{ tr('MAC 地址') }}</span>
+                <strong class="mono">{{ selectedIfaceMac || tr('未知') }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
               <h2>{{ tr('端口') }}</h2>
               <p>{{ tr('全员端口需一致，修改后重启应用生效。') }}</p>
             </div>
@@ -2019,6 +2072,30 @@ async function confirmRemove(cidr: string): Promise<void> {
   background: var(--bg-list);
   color: var(--text-2);
   cursor: pointer;
+}
+
+.iface-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-hover);
+}
+
+.iface-meta .iface-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--font-xs);
+  color: var(--text-3);
+}
+
+.iface-meta .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--font-sm);
+  word-break: break-all;
 }
 
 .path {

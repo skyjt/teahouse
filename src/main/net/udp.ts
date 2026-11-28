@@ -1,6 +1,6 @@
 import { createSocket, type Socket, type RemoteInfo } from 'node:dgram'
-import { networkInterfaces } from 'node:os'
 import { EventEmitter } from 'node:events'
+import { computeBroadcastTargets as computeBroadcastTargetsForIp } from '../util/local-network'
 import { UDP_MAX_PAYLOAD, type Envelope } from '../../shared/protocol'
 import { decode, encode } from './codec'
 
@@ -12,6 +12,8 @@ export interface UdpChannelOptions {
   broadcastTargets?: string[]
   /** 每源 IP 限速（protocol §1 入站校验 + tech-design §9 防泛洪） */
   rate?: { perSecond: number; burst: number }
+  /** 首选本机 IPv4；空=全部网卡广播 */
+  preferredLocalIp?: string
 }
 
 interface Bucket {
@@ -93,7 +95,7 @@ export class UdpChannel extends EventEmitter {
 
   private broadcastAddrs(): string[] {
     if (this.opts.broadcastTargets) return this.opts.broadcastTargets
-    return computeBroadcastTargets()
+    return computeBroadcastTargets(this.opts.preferredLocalIp ?? '')
   }
 
   private allow(ip: string): boolean {
@@ -134,18 +136,6 @@ export class UdpChannel extends EventEmitter {
 }
 
 /** 枚举所有非回环 IPv4 网卡的子网定向广播地址 + 受限广播（protocol §6.1） */
-export function computeBroadcastTargets(): string[] {
-  const targets = new Set<string>(['255.255.255.255'])
-  const ifaces = networkInterfaces()
-  for (const list of Object.values(ifaces)) {
-    for (const addr of list ?? []) {
-      if (addr.family !== 'IPv4' || addr.internal) continue
-      const ip = addr.address.split('.').map(Number)
-      const mask = addr.netmask.split('.').map(Number)
-      if (ip.length !== 4 || mask.length !== 4) continue
-      const bcast = ip.map((octet, i) => (octet & mask[i]) | (~mask[i] & 0xff))
-      targets.add(bcast.join('.'))
-    }
-  }
-  return [...targets]
+export function computeBroadcastTargets(preferredLocalIp = ''): string[] {
+  return computeBroadcastTargetsForIp(preferredLocalIp)
 }

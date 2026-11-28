@@ -48,11 +48,12 @@ Profiles carried by `entry`, `alive`, and `profile` include:
   "host": "alex-pc",
   "platform": "win",
   "tcpPort": 17879,
+  "mac": "aa:bb:cc:dd:ee:ff",
   "caps": ["grp1", "img1", "shr1"]
 }
 ```
 
-String and array fields are length-bounded by the codec. `avatar` retains a numeric fallback: legacy nickname color, animal/background combinations, or nickname-initial background colors. Custom avatars use a separate SHA-256 declaration.
+String and array fields are length-bounded by the codec. `avatar` retains a numeric fallback: legacy nickname color, animal/background combinations, or nickname-initial background colors. Custom avatars use a separate SHA-256 declaration. Optional `mac` is the MAC for the node’s advertised LAN IPv4 (empty when unknown); legacy peers may omit it, while new peers always send it and always display it—there is no setting to disable it.
 
 Known capability tokens:
 
@@ -398,6 +399,8 @@ Measure 100ms between sampling starts. After consuming a frame, wait only the re
 - Keep the main protocol independent from the paused Neiwangtong adapter described in [nwt-compat-design.md](nwt-compat-design.md).
 
 ## 11. Change record
+
+- **2026-11-26:** §3 `Profile` gains optional `mac` (MAC for the advertised LAN IPv4, empty when unknown). Legacy peers may omit it; new peers always send it and show it in contact profiles with no opt-out. Envelope stays `v:1`.
 
 - **2026-09-16, #308, design only:** reserve §8.3 screen sessions, `rv1/rvs1`, demand-driven JPEG frames on the existing TCP listener, grants, backpressure, and validation/deadlines. Nothing is implemented or advertised; application **v0.57.0** and current wire behavior remain unchanged.
 

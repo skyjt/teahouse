@@ -122,6 +122,8 @@ export const LIMITS = {
   groupAdminHint: 40,
   groupAdminHash: 64,
   avatarHash: 64,
+  /** 本机身份 IP 对应 MAC（aa:bb:cc:dd:ee:ff 或 aa-bb-…） */
+  mac: 17,
   groupDescription: 200,
   groupAnnounce: 1024
 }
@@ -145,6 +147,11 @@ export interface Profile {
   host: string
   platform: Platform
   tcpPort: number
+  /**
+   * 本机当前局域网身份 IPv4 对应的 MAC；未知为空串。
+   * 可选以兼容旧端；新端出站始终携带。
+   */
+  mac?: string
   /** 应用版本，"内网有新版"提示的依据 */
   ver: string
   /** 能力声明，供未来扩展探测 */

@@ -201,6 +201,17 @@ export interface AppInfo {
   nodeId: string
   /** 当前用于局域网身份展示的本机 IPv4。 */
   localIp: string
+  /** 当前展示 IP 对应的 MAC；未知时为空串。 */
+  localMac: string
+  /** 配置的首选本机 IP；空=自动。 */
+  preferredLocalIp: string
+}
+
+/** 设置页网卡列表项（非回环 IPv4）。 */
+export interface LocalNetworkInterfaceView {
+  name: string
+  address: string
+  mac: string
 }
 
 /** 截图开始时固定的可选收件人和聊天入口。 */
@@ -224,6 +235,8 @@ export interface PeerView {
   avatarHash: string
   platform: Platform
   ip: string
+  /** 对端广播的本机身份 MAC；旧端或缺省为空串。 */
+  mac: string
   online: boolean
   lastSeen: number
   /** 应用版本（决议 #166，自更新版本比对依据） */
@@ -580,6 +593,14 @@ export interface SettingsView {
   scanRangeItems: ScanRangeItemView[]
   udpPort: number
   tcpPort: number
+  /** 首选本机 IPv4；空=自动。修改后需重启生效。 */
+  preferredLocalIp: string
+  /** 当前生效的本机 IPv4（含自动回退结果）。 */
+  localIp: string
+  /** 当前生效 IP 的 MAC。 */
+  localMac: string
+  /** 可选本机网卡列表（非回环 IPv4）。 */
+  networkInterfaces: LocalNetworkInterfaceView[]
   /** 截图时隐藏茶话间窗口（决议 #22） */
   hideOnCapture: boolean
   autoLaunch: boolean
@@ -745,6 +766,7 @@ export interface AppSettingsPatch {
   scanRanges?: string[]
   udpPort?: number
   tcpPort?: number
+  preferredLocalIp?: string
   hideOnCapture?: boolean
   autoLaunch?: boolean
   closeToTray?: boolean
