@@ -7,6 +7,7 @@ import {
   LIMITS,
   MSG_TYPES,
   TABLE_TEXT_LIMIT_BYTES,
+  TEXT_TCP_LIMIT,
   TRANSFER_FAILURE_REASONS,
   UDP_MAX_INBOUND,
   type AvatarPayload,
@@ -198,6 +199,18 @@ describe('codec', () => {
   it('超长报文拒收', () => {
     const result = decode(Buffer.alloc(UDP_MAX_INBOUND + 1, 0x20))
     expect(result).toEqual({ ok: false, reason: 'oversize' })
+  })
+
+  it('TCP 文本上限接受 56KiB 并拒绝超限', () => {
+    const okText = 'a'.repeat(TEXT_TCP_LIMIT)
+    const okEnv = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-aaaa', { kind: 'text', text: okText })
+    expect(decodeTcpEnvelopeObject(okEnv)).toMatchObject({ ok: true, known: true })
+
+    const overEnv = makeEnvelope<MsgPayload>(MSG_TYPES.msg, 'node-aaaa', {
+      kind: 'text',
+      text: 'a'.repeat(TEXT_TCP_LIMIT + 1)
+    })
+    expect(decodeTcpEnvelopeObject(overEnv)).toEqual({ ok: false, reason: 'bad-payload:msg' })
   })
 
   it('entry 载荷昵称超长拒收（字段白名单校验）', () => {

@@ -12,7 +12,7 @@ export const UDP_MAX_INBOUND = 4096
 /** 文本超过此长度走 TCP 控制帧（protocol §7.2 / §9） */
 export const TEXT_UDP_LIMIT = 800
 /** 文本输入硬上限；超出不发送 */
-export const TEXT_TCP_LIMIT = 4096
+export const TEXT_TCP_LIMIT = 56 * 1024
 /** 局域网自更新单包硬上限（决议 #208）。 */
 export const UPDATE_PACKAGE_MAX_BYTES = 512 * 1024 * 1024
 /** 自定义头像源文件读取上限（决议 #243）。 */
@@ -463,7 +463,7 @@ export const IMG_AUTO_ACCEPT = 20 * 1024 * 1024
 /** 群聊图片内联上限（决议 #33）：超限按普通文件发送，由收端手动接收 */
 export const GROUP_IMG_AUTO_ACCEPT = 10 * 1024 * 1024
 /** 表格图片消息原始 TSV 文字视图上限（决议 #190） */
-export const TABLE_TEXT_LIMIT_BYTES = TEXT_TCP_LIMIT
+export const TABLE_TEXT_LIMIT_BYTES = 4096
 
 export interface FileCtlOffer {
   op: 'offer'

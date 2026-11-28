@@ -65,7 +65,7 @@ async function sendAll(): Promise<void> {
         </label>
         <p v-if="peersStore.peers.length === 0" class="empty">{{ tr('还没有发现任何节点') }}</p>
       </div>
-      <textarea v-model="text" class="message" maxlength="4096"></textarea>
+      <textarea v-model="text" class="message" :maxlength="TEXT_TCP_LIMIT"></textarea>
       <div class="foot">
         <span class="count">{{ tr('已选 {0} 人', { 0: picked.size }) }}<template v-if="bytes > 600">{{ tr('· {0} / {1} 字节', { 0: bytes, 1: TEXT_TCP_LIMIT }) }}<template v-if="overUdpLimit && !overLimit">· TCP</template>
           </template>

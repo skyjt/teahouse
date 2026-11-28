@@ -175,7 +175,7 @@ Gossip entries contain Node ID, IP, TCP port, and last-seen time. A receiver pro
 
 `kind` may be `text`, `group-text`, `recall`, `nudge`, or `pk`. Fields are valid only for the associated kind and are rejected when they violate the exact allowlist.
 
-- Text at or below 800 bytes prefers UDP. Larger text, up to 4,096 bytes, uses TCP.
+- Text at or below 800 bytes prefers UDP. Larger text, up to 57,344 bytes (56 KiB UTF-8), uses TCP control frames, leaving headroom under the 64 KiB frame cap.
 - A five-minute recall targets the original message ID. Receivers verify sender ownership and conversation context. Media recall additionally requires `mrec1` and a shared `offer.msgId`.
 - Nudges are private, reliable immediate actions with no offline queue. Each peer pair allows at most two per 60 seconds and at least 15 seconds between accepted actions.
 - PK messages carry the sender-generated immutable dice or rock-paper-scissors result. They are online-only, not queued, and retries reuse the same ID/result.
@@ -366,7 +366,7 @@ Measure 100ms between sampling starts. After consuming a frame, wait only the re
 |---|---|
 | UDP/TCP ports | 17878 / 17879 |
 | UDP maximum payload | 1,200 B |
-| UDP/TCP text thresholds | 800 B / 4,096 B |
+| UDP/TCP text thresholds | 800 B / 57,344 B (56 KiB) |
 | ACK retry | 1s / 2s / 4s |
 | Presence/offline | 30s / 90s |
 | Scan rates | 128 addresses/s manual; about 16 addresses/s background |
@@ -398,6 +398,8 @@ Measure 100ms between sampling starts. After consuming a frame, wait only the re
 - Keep the main protocol independent from the paused Neiwangtong adapter described in [nwt-compat-design.md](nwt-compat-design.md).
 
 ## 11. Change record
+
+- **2026-11-26:** raise `TEXT_TCP_LIMIT` from 4,096 B to 57,344 B (56 KiB UTF-8), still bounded by the 64 KiB TCP control frame cap; `TABLE_TEXT_LIMIT` stays at 4,096 B and is decoupled from the main text cap.
 
 - **2026-09-16, #308, design only:** reserve §8.3 screen sessions, `rv1/rvs1`, demand-driven JPEG frames on the existing TCP listener, grants, backpressure, and validation/deadlines. Nothing is implemented or advertised; application **v0.57.0** and current wire behavior remain unchanged.
 
